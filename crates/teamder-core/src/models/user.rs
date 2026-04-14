@@ -55,7 +55,7 @@ pub struct User {
     #[serde(rename = "_id")]
     pub id: String,
     pub email: String,
-    #[serde(skip_serializing)]
+    #[serde(default, skip_serializing)]
     pub password_hash: String,
     pub name: String,
     pub initials: String,
