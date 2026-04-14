@@ -13,10 +13,10 @@ name = "teamder-api"
 path = "src/main.rs"
 
 [dev-dependencies]
-mongodb = { workspace = true }
 dotenvy = { workspace = true }
 
 [dependencies]
+mongodb = { workspace = true }
 teamder-core = { workspace = true }
 teamder-db = { workspace = true }
 
