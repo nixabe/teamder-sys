@@ -12,6 +12,13 @@ edition = "2021"
 authors = ["WatchAndyTW"]
 license = "MIT"
 
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
 [workspace.dependencies]
 # Serialization
 serde = { version = "1", features = ["derive"] }

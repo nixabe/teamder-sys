@@ -10,7 +10,7 @@ mod state;
 use rocket::fairing::AdHoc;
 use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
 use std::str::FromStr;
-use teamder_db::DbClient;
+use teamder_db::{seed, DbClient};
 
 use crate::state::AppState;
 
@@ -36,6 +36,10 @@ async fn rocket() -> _ {
     let db_client = DbClient::connect(&mongo_uri, &db_name)
         .await
         .expect("Failed to connect to MongoDB");
+
+    seed::seed_if_empty(&db_client)
+        .await
+        .expect("Failed to seed database");
 
     let app_state = AppState::new(db_client);
 

@@ -31,7 +31,7 @@ impl<'r> FromRequest<'r> for AuthUser {
 }
 
 /// Request guard that additionally requires the user to be an admin.
-pub struct AdminUser(pub Claims);
+pub struct AdminUser(#[allow(dead_code)] pub Claims);
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AdminUser {
