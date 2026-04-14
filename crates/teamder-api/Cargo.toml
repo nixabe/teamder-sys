@@ -4,9 +4,17 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 
+[lib]
+name = "teamder_api"
+path = "src/lib.rs"
+
 [[bin]]
 name = "teamder-api"
 path = "src/main.rs"
+
+[dev-dependencies]
+mongodb = { workspace = true }
+dotenvy = { workspace = true }
 
 [dependencies]
 teamder-core = { workspace = true }

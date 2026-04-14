@@ -169,3 +169,72 @@ impl From<Project> for ProjectResponse {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_project() -> Project {
+        Project::new("Test Project", "user-1", "Alice Wang", "A test project")
+    }
+
+    #[test]
+    fn test_default_status_recruiting() {
+        let p = make_project();
+        assert_eq!(p.status, ProjectStatus::Recruiting);
+    }
+
+    #[test]
+    fn test_default_collab_hybrid() {
+        let p = make_project();
+        assert_eq!(p.collab, CollabMode::Hybrid);
+    }
+
+    #[test]
+    fn test_default_is_public_true() {
+        let p = make_project();
+        assert!(p.is_public);
+    }
+
+    #[test]
+    fn test_default_team_empty() {
+        let p = make_project();
+        assert!(p.team.is_empty());
+    }
+
+    #[test]
+    fn test_default_goals_none() {
+        let p = make_project();
+        assert!(p.goals.is_none());
+    }
+
+    #[test]
+    fn test_id_is_uuid_like() {
+        let p = make_project();
+        assert_eq!(p.id.len(), 36);
+    }
+
+    #[test]
+    fn test_name_stored() {
+        let p = make_project();
+        assert_eq!(p.name, "Test Project");
+    }
+
+    #[test]
+    fn test_response_from_project() {
+        let p = make_project();
+        let resp = ProjectResponse::from(p.clone());
+        assert_eq!(resp.id, p.id);
+        assert_eq!(resp.name, p.name);
+        assert_eq!(resp.lead_user_id, p.lead_user_id);
+        assert_eq!(resp.status, ProjectStatus::Recruiting);
+        assert!(resp.is_public);
+    }
+
+    #[test]
+    fn test_two_projects_have_different_ids() {
+        let p1 = make_project();
+        let p2 = make_project();
+        assert_ne!(p1.id, p2.id);
+    }
+}

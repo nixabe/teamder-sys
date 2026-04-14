@@ -124,3 +124,104 @@ impl From<StudyGroup> for StudyGroupResponse {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn make_group() -> StudyGroup {
+        StudyGroup::new("Rust Study", "Learn Rust together", "user-1")
+    }
+
+    fn make_member(user_id: &str) -> GroupMember {
+        GroupMember {
+            user_id: user_id.into(),
+            initials: "AB".into(),
+            color: "#4F6D7A".into(),
+            joined_at: Utc::now(),
+            last_checkin: None,
+            streak: 0,
+        }
+    }
+
+    #[test]
+    fn test_default_max_members() {
+        let g = make_group();
+        assert_eq!(g.max_members, 6);
+    }
+
+    #[test]
+    fn test_default_is_open() {
+        let g = make_group();
+        assert!(g.is_open);
+    }
+
+    #[test]
+    fn test_default_current_week_one() {
+        let g = make_group();
+        assert_eq!(g.current_week, 1);
+    }
+
+    #[test]
+    fn test_default_members_empty() {
+        let g = make_group();
+        assert!(g.members.is_empty());
+    }
+
+    #[test]
+    fn test_progress_percent_zero_current_week() {
+        let mut g = make_group();
+        g.current_week = 0;
+        g.duration_weeks = 8;
+        assert_eq!(g.progress_percent(), 0);
+    }
+
+    #[test]
+    fn test_progress_percent_midpoint() {
+        let mut g = make_group();
+        g.current_week = 4;
+        g.duration_weeks = 8;
+        assert_eq!(g.progress_percent(), 50);
+    }
+
+    #[test]
+    fn test_progress_percent_complete() {
+        let mut g = make_group();
+        g.current_week = 8;
+        g.duration_weeks = 8;
+        assert_eq!(g.progress_percent(), 100);
+    }
+
+    #[test]
+    fn test_progress_percent_zero_duration_returns_zero() {
+        let mut g = make_group();
+        g.current_week = 1;
+        g.duration_weeks = 0;
+        assert_eq!(g.progress_percent(), 0);
+    }
+
+    #[test]
+    fn test_response_member_count() {
+        let mut g = make_group();
+        g.members.push(make_member("u1"));
+        g.members.push(make_member("u2"));
+        let resp = StudyGroupResponse::from(g);
+        assert_eq!(resp.member_count, 2);
+    }
+
+    #[test]
+    fn test_response_progress_percent_propagated() {
+        let mut g = make_group();
+        g.current_week = 3;
+        g.duration_weeks = 10;
+        let resp = StudyGroupResponse::from(g);
+        assert_eq!(resp.progress_percent, 30);
+    }
+
+    #[test]
+    fn test_id_is_uuid_like() {
+        let g = make_group();
+        assert_eq!(g.id.len(), 36);
+    }
+}

@@ -135,3 +135,75 @@ impl From<Competition> for CompetitionResponse {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn make_competition() -> Competition {
+        Competition::new("Test Hackathon", "FJCU", "A great hackathon for students")
+    }
+
+    #[test]
+    fn test_default_status_upcoming() {
+        let c = make_competition();
+        assert_eq!(c.status, CompetitionStatus::Upcoming);
+    }
+
+    #[test]
+    fn test_default_not_featured() {
+        let c = make_competition();
+        assert!(!c.is_featured);
+    }
+
+    #[test]
+    fn test_default_registrations_empty() {
+        let c = make_competition();
+        assert!(c.registrations.is_empty());
+    }
+
+    #[test]
+    fn test_default_team_size() {
+        let c = make_competition();
+        assert_eq!(c.team_size_min, 2);
+        assert_eq!(c.team_size_max, 5);
+    }
+
+    #[test]
+    fn test_id_is_uuid_like() {
+        let c = make_competition();
+        assert_eq!(c.id.len(), 36);
+    }
+
+    #[test]
+    fn test_response_registration_count_zero() {
+        let c = make_competition();
+        let resp = CompetitionResponse::from(c);
+        assert_eq!(resp.registration_count, 0);
+    }
+
+    #[test]
+    fn test_response_registration_count_nonzero() {
+        let mut c = make_competition();
+        c.registrations.push(Registration {
+            user_id: "u1".into(),
+            team_name: None,
+            registered_at: Utc::now(),
+        });
+        c.registrations.push(Registration {
+            user_id: "u2".into(),
+            team_name: Some("Team A".into()),
+            registered_at: Utc::now(),
+        });
+        let resp = CompetitionResponse::from(c);
+        assert_eq!(resp.registration_count, 2);
+    }
+
+    #[test]
+    fn test_name_and_organizer_stored() {
+        let c = make_competition();
+        assert_eq!(c.name, "Test Hackathon");
+        assert_eq!(c.organizer, "FJCU");
+    }
+}

@@ -91,3 +91,62 @@ impl From<Invite> for InviteResponse {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_invite() -> Invite {
+        Invite::new("user-sender", "Alice Wang", "user-recipient")
+    }
+
+    #[test]
+    fn test_default_status_pending() {
+        let inv = make_invite();
+        assert_eq!(inv.status, InviteStatus::Pending);
+    }
+
+    #[test]
+    fn test_default_project_id_none() {
+        let inv = make_invite();
+        assert!(inv.project_id.is_none());
+    }
+
+    #[test]
+    fn test_default_message_none() {
+        let inv = make_invite();
+        assert!(inv.message.is_none());
+    }
+
+    #[test]
+    fn test_expires_at_is_seven_days_after_created() {
+        let inv = make_invite();
+        let diff = inv.expires_at - inv.created_at;
+        // Should be ~7 days (604800 seconds), allow 1 second tolerance
+        assert!(diff.num_seconds() >= 604799 && diff.num_seconds() <= 604801);
+    }
+
+    #[test]
+    fn test_from_and_to_user_ids_stored() {
+        let inv = make_invite();
+        assert_eq!(inv.from_user_id, "user-sender");
+        assert_eq!(inv.to_user_id, "user-recipient");
+        assert_eq!(inv.from_user_name, "Alice Wang");
+    }
+
+    #[test]
+    fn test_id_is_uuid_like() {
+        let inv = make_invite();
+        assert_eq!(inv.id.len(), 36);
+    }
+
+    #[test]
+    fn test_response_from_invite() {
+        let inv = make_invite();
+        let resp = InviteResponse::from(inv.clone());
+        assert_eq!(resp.id, inv.id);
+        assert_eq!(resp.status, InviteStatus::Pending);
+        assert_eq!(resp.from_user_id, "user-sender");
+        assert_eq!(resp.to_user_id, "user-recipient");
+    }
+}

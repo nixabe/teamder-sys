@@ -19,6 +19,10 @@ impl AppState {
     pub fn new(db: DbClient) -> Self {
         let jwt_secret = std::env::var("JWT_SECRET")
             .unwrap_or_else(|_| "teamder-dev-secret-change-in-production".to_string());
+        Self::new_with_secret(db, jwt_secret)
+    }
+
+    pub fn new_with_secret(db: DbClient, jwt_secret: String) -> Self {
         Self {
             users: UserRepo::new(&db),
             projects: ProjectRepo::new(&db),

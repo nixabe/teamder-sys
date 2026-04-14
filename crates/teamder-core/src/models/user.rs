@@ -55,7 +55,6 @@ pub struct User {
     #[serde(rename = "_id")]
     pub id: String,
     pub email: String,
-    #[serde(default, skip_serializing)]
     pub password_hash: String,
     pub name: String,
     pub initials: String,
@@ -214,5 +213,83 @@ impl From<User> for UserResponse {
             collaborations: u.collaborations,
             created_at: u.created_at,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_initials_two_words() {
+        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        assert_eq!(u.initials, "AW");
+    }
+
+    #[test]
+    fn test_initials_single_word() {
+        let u = User::new("a@b.com", "hash", "Alice", "Dev", "CS");
+        assert_eq!(u.initials, "A");
+    }
+
+    #[test]
+    fn test_initials_many_words_capped_at_two() {
+        let u = User::new("a@b.com", "hash", "Alice Bob Chen", "Dev", "CS");
+        assert_eq!(u.initials, "AB");
+    }
+
+    #[test]
+    fn test_initials_lowercase_input_is_uppercased() {
+        let u = User::new("a@b.com", "hash", "alice wang", "Dev", "CS");
+        assert_eq!(u.initials, "AW");
+    }
+
+    #[test]
+    fn test_default_is_not_admin() {
+        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        assert!(!u.is_admin);
+    }
+
+    #[test]
+    fn test_default_availability_open_for_collab() {
+        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        assert_eq!(u.availability, AvailabilityStatus::OpenForCollab);
+    }
+
+    #[test]
+    fn test_default_work_mode_hybrid() {
+        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        assert_eq!(u.work_mode, WorkMode::Hybrid);
+    }
+
+    #[test]
+    fn test_default_match_score_zero() {
+        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        assert_eq!(u.match_score, 0);
+    }
+
+    #[test]
+    fn test_id_is_uuid_like() {
+        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        // UUID v4 has 36 chars with hyphens
+        assert_eq!(u.id.len(), 36);
+        assert!(u.id.contains('-'));
+    }
+
+    #[test]
+    fn test_response_strips_password_hash() {
+        let u = User::new("a@b.com", "secret_hash", "Alice Wang", "Dev", "CS");
+        let resp = UserResponse::from(u.clone());
+        // The response type doesn't even have a password_hash field
+        assert_eq!(resp.id, u.id);
+        assert_eq!(resp.email, u.email);
+        assert_eq!(resp.name, u.name);
+    }
+
+    #[test]
+    fn test_two_users_have_different_ids() {
+        let u1 = User::new("a@b.com", "h", "Alice Wang", "Dev", "CS");
+        let u2 = User::new("b@c.com", "h", "Bob Lin", "Dev", "CS");
+        assert_ne!(u1.id, u2.id);
     }
 }

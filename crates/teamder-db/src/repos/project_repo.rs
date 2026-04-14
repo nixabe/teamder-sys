@@ -113,6 +113,26 @@ impl ProjectRepo {
         if let Some(v) = &req.deadline { update_doc.insert("deadline", v.clone()); }
         if let Some(v) = &req.duration { update_doc.insert("duration", v.clone()); }
         if let Some(v) = &req.is_public { update_doc.insert("is_public", *v); }
+        if let Some(v) = &req.status {
+            let bson = mongodb::bson::to_bson(v)
+                .map_err(|e| TeamderError::Internal(e.to_string()))?;
+            update_doc.insert("status", bson);
+        }
+        if let Some(v) = &req.collab {
+            let bson = mongodb::bson::to_bson(v)
+                .map_err(|e| TeamderError::Internal(e.to_string()))?;
+            update_doc.insert("collab", bson);
+        }
+        if let Some(v) = &req.roles {
+            let bson = mongodb::bson::to_bson(v)
+                .map_err(|e| TeamderError::Internal(e.to_string()))?;
+            update_doc.insert("roles", bson);
+        }
+        if let Some(v) = &req.skills {
+            let bson = mongodb::bson::to_bson(v)
+                .map_err(|e| TeamderError::Internal(e.to_string()))?;
+            update_doc.insert("skills", bson);
+        }
         update_doc.insert("updated_at", Utc::now().to_rfc3339());
 
         self.col
