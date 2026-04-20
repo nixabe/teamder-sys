@@ -24,7 +24,7 @@ pub async fn build_rocket(db_client: DbClient, jwt_secret: String) -> rocket::Ro
     let allowed_origins = AllowedOrigins::some_exact(&[
         "http://localhost:3000",
         "http://localhost:3001",
-        "https://teamder.app",
+        "https://teamder.watchandy.me",
     ]);
     let cors = CorsOptions {
         allowed_origins,
