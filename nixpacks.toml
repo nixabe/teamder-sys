@@ -1,0 +1,2 @@
+[start]
+cmd = "/app/target/release/teamder-api"
