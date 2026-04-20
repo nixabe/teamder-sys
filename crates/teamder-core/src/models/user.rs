@@ -78,6 +78,8 @@ pub struct User {
     pub projects_done: u32,
     pub collaborations: u32,
     pub is_admin: bool,
+    #[serde(default)]
+    pub resume_url: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -124,6 +126,7 @@ impl User {
             projects_done: 0,
             collaborations: 0,
             is_admin: false,
+            resume_url: None,
             created_at: now,
             updated_at: now,
         }
@@ -152,8 +155,11 @@ pub struct UpdateUserRequest {
     pub skills: Option<Vec<Skill>>,
     pub skill_tags: Option<Vec<String>>,
     pub work_mode: Option<WorkMode>,
+    pub availability: Option<AvailabilityStatus>,
     pub hours_per_week: Option<String>,
     pub languages: Option<Vec<String>>,
+    pub portfolio: Option<Vec<PortfolioItem>>,
+    pub resume_url: Option<Option<String>>,
 }
 
 /// Response shape returned to API clients (no password hash).
@@ -182,6 +188,7 @@ pub struct UserResponse {
     pub rating: f32,
     pub projects_done: u32,
     pub collaborations: u32,
+    pub resume_url: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -211,6 +218,7 @@ impl From<User> for UserResponse {
             rating: u.rating,
             projects_done: u.projects_done,
             collaborations: u.collaborations,
+            resume_url: u.resume_url,
             created_at: u.created_at,
         }
     }

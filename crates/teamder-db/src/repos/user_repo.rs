@@ -94,6 +94,8 @@ impl UserRepo {
         id: &str,
         req: &UpdateUserRequest,
     ) -> Result<(), TeamderError> {
+        use mongodb::bson::to_bson;
+
         let mut update_doc = Document::new();
 
         if let Some(v) = &req.name {
@@ -115,14 +117,80 @@ impl UserRepo {
             let bio_bson: Vec<_> = v.iter().map(|s| mongodb::bson::Bson::String(s.clone())).collect();
             update_doc.insert("bio", bio_bson);
         }
+        if let Some(v) = &req.skills {
+            let bson = to_bson(v).map_err(|e| TeamderError::Database(e.to_string()))?;
+            update_doc.insert("skills", bson);
+        }
+        if let Some(v) = &req.skill_tags {
+            let tags: Vec<_> = v.iter().map(|s| mongodb::bson::Bson::String(s.clone())).collect();
+            update_doc.insert("skill_tags", tags);
+        }
+        if let Some(v) = &req.work_mode {
+            let bson = to_bson(v).map_err(|e| TeamderError::Database(e.to_string()))?;
+            update_doc.insert("work_mode", bson);
+        }
+        if let Some(v) = &req.availability {
+            let bson = to_bson(v).map_err(|e| TeamderError::Database(e.to_string()))?;
+            update_doc.insert("availability", bson);
+        }
         if let Some(v) = &req.hours_per_week {
             update_doc.insert("hours_per_week", v.clone());
+        }
+        if let Some(v) = &req.languages {
+            let langs: Vec<_> = v.iter().map(|s| mongodb::bson::Bson::String(s.clone())).collect();
+            update_doc.insert("languages", langs);
+        }
+        if let Some(v) = &req.portfolio {
+            let bson = to_bson(v).map_err(|e| TeamderError::Database(e.to_string()))?;
+            update_doc.insert("portfolio", bson);
+        }
+        // resume_url uses double-Option: outer = "should we touch it", inner = value (None → null).
+        if let Some(inner) = &req.resume_url {
+            match inner {
+                Some(url) => update_doc.insert("resume_url", url.clone()),
+                None => update_doc.insert("resume_url", mongodb::bson::Bson::Null),
+            };
         }
         update_doc.insert("updated_at", Utc::now().to_rfc3339());
 
         let filter = doc! { "_id": id };
         let update = doc! { "$set": update_doc };
 
+        self.col
+            .update_one(filter, update)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Set just the resume_url field (used by the uploads route after saving a file).
+    pub async fn set_resume_url(&self, id: &str, url: Option<String>) -> Result<(), TeamderError> {
+        let value = match url {
+            Some(u) => mongodb::bson::Bson::String(u),
+            None => mongodb::bson::Bson::Null,
+        };
+        let filter = doc! { "_id": id };
+        let update = doc! { "$set": { "resume_url": value, "updated_at": Utc::now().to_rfc3339() } };
+        self.col
+            .update_one(filter, update)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Append a portfolio item (used by uploads route after saving a file).
+    pub async fn push_portfolio_item(
+        &self,
+        id: &str,
+        item: &teamder_core::models::user::PortfolioItem,
+    ) -> Result<(), TeamderError> {
+        use mongodb::bson::to_bson;
+        let bson = to_bson(item).map_err(|e| TeamderError::Database(e.to_string()))?;
+        let filter = doc! { "_id": id };
+        let update = doc! {
+            "$push": { "portfolio": bson },
+            "$set": { "updated_at": Utc::now().to_rfc3339() },
+        };
         self.col
             .update_one(filter, update)
             .await

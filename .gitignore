@@ -22,3 +22,7 @@ target
 
 # Environment variables
 .env
+
+# User-uploaded files (keep the dir via .gitkeep)
+/uploads/*
+!/uploads/.gitkeep

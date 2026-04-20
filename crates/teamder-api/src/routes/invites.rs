@@ -38,6 +38,14 @@ async fn send_invite(
         }
     }
 
+    // Resolve study group name if study_group_id provided
+    if let Some(sgid) = &req.study_group_id {
+        if let Some(group) = state.study_groups.find_by_id(sgid).await? {
+            invite.study_group_id = Some(sgid.clone());
+            invite.study_group_name = Some(group.name);
+        }
+    }
+
     state.invites.create(&invite).await?;
     Ok(Json(invite.into()))
 }

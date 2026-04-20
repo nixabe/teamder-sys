@@ -11,7 +11,7 @@ pub enum InviteStatus {
     Expired,
 }
 
-/// An invite sent from one user to another to join a project.
+/// An invite sent from one user to another to join a project or study group.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Invite {
     #[serde(rename = "_id")]
@@ -21,6 +21,10 @@ pub struct Invite {
     pub to_user_id: String,
     pub project_id: Option<String>,
     pub project_name: Option<String>,
+    #[serde(default)]
+    pub study_group_id: Option<String>,
+    #[serde(default)]
+    pub study_group_name: Option<String>,
     pub message: Option<String>,
     pub status: InviteStatus,
     pub created_at: DateTime<Utc>,
@@ -41,6 +45,8 @@ impl Invite {
             to_user_id: to_user_id.into(),
             project_id: None,
             project_name: None,
+            study_group_id: None,
+            study_group_name: None,
             message: None,
             status: InviteStatus::Pending,
             created_at: now,
@@ -53,6 +59,7 @@ impl Invite {
 pub struct SendInviteRequest {
     pub to_user_id: String,
     pub project_id: Option<String>,
+    pub study_group_id: Option<String>,
     pub message: Option<String>,
 }
 
@@ -69,6 +76,8 @@ pub struct InviteResponse {
     pub to_user_id: String,
     pub project_id: Option<String>,
     pub project_name: Option<String>,
+    pub study_group_id: Option<String>,
+    pub study_group_name: Option<String>,
     pub message: Option<String>,
     pub status: InviteStatus,
     pub created_at: DateTime<Utc>,
@@ -84,6 +93,8 @@ impl From<Invite> for InviteResponse {
             to_user_id: i.to_user_id,
             project_id: i.project_id,
             project_name: i.project_name,
+            study_group_id: i.study_group_id,
+            study_group_name: i.study_group_name,
             message: i.message,
             status: i.status,
             created_at: i.created_at,

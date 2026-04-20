@@ -1,6 +1,10 @@
 [default]
 cli_colors = false
 
+[default.limits]
+file = "10 MiB"
+data-form = "12 MiB"
+
 [debug]
 address = "127.0.0.1"
 port = 8000
