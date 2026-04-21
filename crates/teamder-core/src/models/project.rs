@@ -36,14 +36,13 @@ pub struct TeamMember {
     pub joined_at: DateTime<Utc>,
 }
 
-/// Core project document in `projects` collection.
+/// Core project document in `projects` collection. lead_name resolved at API layer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     #[serde(rename = "_id")]
     pub id: String,
     pub name: String,
     pub lead_user_id: String,
-    pub lead_name: String,
     pub icon: String,
     pub icon_bg: String,
     pub status: ProjectStatus,
@@ -65,7 +64,6 @@ impl Project {
     pub fn new(
         name: impl Into<String>,
         lead_user_id: impl Into<String>,
-        lead_name: impl Into<String>,
         description: impl Into<String>,
     ) -> Self {
         let now = Utc::now();
@@ -73,7 +71,6 @@ impl Project {
             id: Uuid::new_v4().to_string(),
             name: name.into(),
             lead_user_id: lead_user_id.into(),
-            lead_name: lead_name.into(),
             icon: "Pr".into(),
             icon_bg: "linear-gradient(135deg, #4F6D7A, #2C3E45)".into(),
             status: ProjectStatus::Recruiting,
@@ -145,13 +142,13 @@ pub struct ProjectResponse {
     pub created_at: DateTime<Utc>,
 }
 
-impl From<Project> for ProjectResponse {
-    fn from(p: Project) -> Self {
+impl ProjectResponse {
+    pub fn from_project(p: Project, lead_name: String) -> Self {
         Self {
             id: p.id,
             name: p.name,
             lead_user_id: p.lead_user_id,
-            lead_name: p.lead_name,
+            lead_name,
             icon: p.icon,
             icon_bg: p.icon_bg,
             status: p.status,
@@ -175,7 +172,7 @@ mod tests {
     use super::*;
 
     fn make_project() -> Project {
-        Project::new("Test Project", "user-1", "Alice Wang", "A test project")
+        Project::new("Test Project", "user-1", "A test project")
     }
 
     #[test]
@@ -223,10 +220,11 @@ mod tests {
     #[test]
     fn test_response_from_project() {
         let p = make_project();
-        let resp = ProjectResponse::from(p.clone());
+        let resp = ProjectResponse::from_project(p.clone(), "Alice Wang".into());
         assert_eq!(resp.id, p.id);
         assert_eq!(resp.name, p.name);
         assert_eq!(resp.lead_user_id, p.lead_user_id);
+        assert_eq!(resp.lead_name, "Alice Wang");
         assert_eq!(resp.status, ProjectStatus::Recruiting);
         assert!(resp.is_public);
     }

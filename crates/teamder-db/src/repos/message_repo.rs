@@ -45,6 +45,7 @@ impl MessageRepo {
         Ok(msgs)
     }
 
+    /// Returns conversation summaries with partner_name = "" (caller enriches with user lookup).
     pub async fn list_conversations(&self, user_id: &str) -> Result<Vec<ConversationSummary>, TeamderError> {
         let filter = doc! {
             "$or": [{ "from_user_id": user_id }, { "to_user_id": user_id }]
@@ -61,10 +62,10 @@ impl MessageRepo {
         let mut result: Vec<ConversationSummary> = Vec::new();
 
         for msg in &msgs {
-            let (partner_id, partner_name) = if msg.from_user_id == user_id {
-                (msg.to_user_id.clone(), msg.to_user_name.clone())
+            let partner_id = if msg.from_user_id == user_id {
+                msg.to_user_id.clone()
             } else {
-                (msg.from_user_id.clone(), msg.from_user_name.clone())
+                msg.from_user_id.clone()
             };
             let is_unread = msg.to_user_id == user_id && !msg.read;
 
@@ -72,7 +73,7 @@ impl MessageRepo {
                 seen.insert(partner_id.clone());
                 result.push(ConversationSummary {
                     partner_id,
-                    partner_name,
+                    partner_name: String::new(), // enriched by route handler
                     last_message: msg.content.clone(),
                     last_at: msg.created_at,
                     unread_count: if is_unread { 1 } else { 0 },

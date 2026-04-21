@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use rocket::{Route, State, serde::json::Json};
 use serde_json::{Value, json};
 use teamder_core::{
@@ -6,6 +7,28 @@ use teamder_core::{
 };
 
 use crate::{error::ApiResult, guards::AuthUser, state::AppState};
+
+async fn enrich_projects(
+    projects: Vec<Project>,
+    state: &AppState,
+) -> Result<Vec<ProjectResponse>, TeamderError> {
+    let lead_ids: Vec<&str> = {
+        let mut ids: Vec<&str> = projects.iter().map(|p| p.lead_user_id.as_str()).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    };
+    let users = state.users.find_many_by_ids(&lead_ids).await?;
+    let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
+
+    Ok(projects
+        .into_iter()
+        .map(|p| {
+            let lead_name = names.get(p.lead_user_id.as_str()).copied().unwrap_or("").to_string();
+            ProjectResponse::from_project(p, lead_name)
+        })
+        .collect())
+}
 
 /// GET /api/v1/projects?limit=20&skip=0&status=recruiting&q=query
 #[get("/?<limit>&<skip>&<status>&<q>")]
@@ -19,33 +42,16 @@ async fn list_projects(
     let limit = limit.unwrap_or(20).min(100);
     let skip = skip.unwrap_or(0);
 
-    let projects: Vec<ProjectResponse> = if let Some(query) = q {
-        state
-            .projects
-            .search(&query)
-            .await?
-            .into_iter()
-            .map(ProjectResponse::from)
-            .collect()
+    let raw = if let Some(query) = q {
+        state.projects.search(&query).await?
     } else if let Some(s) = status {
-        state
-            .projects
-            .list_by_status(&s)
-            .await?
-            .into_iter()
-            .map(ProjectResponse::from)
-            .collect()
+        state.projects.list_by_status(&s).await?
     } else {
-        state
-            .projects
-            .list(limit, skip)
-            .await?
-            .into_iter()
-            .map(ProjectResponse::from)
-            .collect()
+        state.projects.list(limit, skip).await?
     };
 
     let total = state.projects.count().await?;
+    let projects = enrich_projects(raw, state.inner()).await?;
 
     Ok(Json(json!({
         "data": projects,
@@ -61,7 +67,9 @@ async fn get_project(id: String, state: &State<AppState>) -> ApiResult<ProjectRe
         .find_by_id(&id)
         .await?
         .ok_or_else(|| TeamderError::NotFound(format!("Project {} not found", id)))?;
-    Ok(Json(project.into()))
+    let lead_name = state.users.find_by_id(&project.lead_user_id).await?
+        .map(|u| u.name).unwrap_or_default();
+    Ok(Json(ProjectResponse::from_project(project, lead_name)))
 }
 
 /// POST /api/v1/projects  (requires auth)
@@ -71,22 +79,12 @@ async fn create_project(
     auth: AuthUser,
     state: &State<AppState>,
 ) -> ApiResult<ProjectResponse> {
-    // Resolve author name
-    let lead_name = state
-        .users
-        .find_by_id(&auth.0.sub)
-        .await?
+    let lead_name = state.users.find_by_id(&auth.0.sub).await?
         .map(|u| u.name)
         .unwrap_or_else(|| "Unknown".into());
 
-    let mut project = Project::new(
-        &req.name,
-        &auth.0.sub,
-        lead_name,
-        &req.description,
-    );
+    let mut project = Project::new(&req.name, &auth.0.sub, &req.description);
 
-    // Apply optional fields
     if let Some(v) = &req.goals { project.goals = Some(v.clone()); }
     if let Some(v) = &req.roles { project.roles = v.clone(); }
     project.skills = req.skills.clone();
@@ -100,7 +98,7 @@ async fn create_project(
 
     state.projects.create(&project).await?;
 
-    Ok(Json(project.into()))
+    Ok(Json(ProjectResponse::from_project(project, lead_name)))
 }
 
 /// PATCH /api/v1/projects/<id>  (auth + owner or admin)
@@ -122,7 +120,6 @@ async fn update_project(
     }
 
     state.projects.update(&id, &req).await?;
-
     Ok(Json(json!({ "success": true })))
 }
 
@@ -144,21 +141,19 @@ async fn delete_project(
     }
 
     state.projects.delete(&id).await?;
-
     Ok(Json(json!({ "success": true })))
 }
 
 /// GET /api/v1/projects/my  (auth — projects led by current user)
 #[get("/my")]
 async fn my_projects(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
-    let projects: Vec<ProjectResponse> = state
-        .projects
-        .list_by_lead(&auth.0.sub)
-        .await?
+    let raw = state.projects.list_by_lead(&auth.0.sub).await?;
+    let lead_name = state.users.find_by_id(&auth.0.sub).await?
+        .map(|u| u.name).unwrap_or_default();
+    let projects: Vec<ProjectResponse> = raw
         .into_iter()
-        .map(ProjectResponse::from)
+        .map(|p| ProjectResponse::from_project(p, lead_name.clone()))
         .collect();
-
     Ok(Json(json!({ "data": projects })))
 }
 

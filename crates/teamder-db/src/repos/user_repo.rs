@@ -1,3 +1,4 @@
+use futures_util::TryStreamExt;
 use mongodb::{
     Collection,
     bson::{doc, Document},
@@ -35,6 +36,18 @@ impl UserRepo {
         self.col
             .find_one(filter)
             .await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    /// Batch-fetch users by IDs. Returns only the users that exist.
+    pub async fn find_many_by_ids(&self, ids: &[&str]) -> Result<Vec<User>, TeamderError> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let filter = doc! { "_id": { "$in": ids } };
+        let cursor = self.col.find(filter).await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor.try_collect().await
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 

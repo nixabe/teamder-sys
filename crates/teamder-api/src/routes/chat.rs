@@ -1,5 +1,6 @@
-use rocket::futures::{SinkExt, StreamExt};
+use std::collections::HashMap;
 use rocket::{State, serde::json::Json};
+use rocket::futures::{SinkExt, StreamExt};
 use rocket_ws as ws;
 use teamder_core::models::message::{ConversationSummary, Message, MessageResponse, WsIncoming};
 
@@ -10,13 +11,35 @@ use crate::{
     state::AppState,
 };
 
+fn build_msg_response(msg: &Message, from_user_name: &str) -> MessageResponse {
+    MessageResponse {
+        id: msg.id.clone(),
+        from_user_id: msg.from_user_id.clone(),
+        from_user_name: from_user_name.to_string(),
+        to_user_id: msg.to_user_id.clone(),
+        content: msg.content.clone(),
+        created_at: msg.created_at,
+        read: msg.read,
+    }
+}
+
 #[get("/conversations")]
 pub async fn list_conversations(
     user: AuthUser,
     state: &State<AppState>,
 ) -> ApiResult<Vec<ConversationSummary>> {
-    let conversations = state.messages.list_conversations(&user.0.sub).await?;
-    Ok(Json(conversations))
+    let mut convs = state.messages.list_conversations(&user.0.sub).await?;
+
+    if !convs.is_empty() {
+        let partner_ids: Vec<&str> = convs.iter().map(|c| c.partner_id.as_str()).collect();
+        let users = state.users.find_many_by_ids(&partner_ids).await?;
+        let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
+        for conv in &mut convs {
+            conv.partner_name = names.get(conv.partner_id.as_str()).copied().unwrap_or("").to_string();
+        }
+    }
+
+    Ok(Json(convs))
 }
 
 #[get("/messages/<partner_id>?<limit>&<skip>")]
@@ -37,7 +60,20 @@ pub async fn message_history(
         )
         .await?;
     let _ = state.messages.mark_read(&partner_id, &user.0.sub).await;
-    Ok(Json(msgs.into_iter().map(MessageResponse::from).collect()))
+
+    // Batch-fetch the two participants' names
+    let user_ids: Vec<&str> = [user.0.sub.as_str(), partner_id.as_str()].into();
+    let users = state.users.find_many_by_ids(&user_ids).await?;
+    let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
+
+    let responses = msgs.iter()
+        .map(|m| {
+            let name = names.get(m.from_user_id.as_str()).copied().unwrap_or("");
+            build_msg_response(m, name)
+        })
+        .collect();
+
+    Ok(Json(responses))
 }
 
 #[get("/ws?<token>")]
@@ -49,18 +85,14 @@ pub async fn chat_ws(
     let claims = verify_token(&token, &state.jwt_secret)?;
     let user_id = claims.sub.clone();
 
-    let user_name = state
-        .users
-        .find_by_id(&user_id)
-        .await
-        .ok()
-        .flatten()
+    // Look up the connecting user's name once at connect time
+    let user_name = state.users.find_by_id(&user_id).await
+        .ok().flatten()
         .map(|u| u.name)
         .unwrap_or_default();
 
     let msg_repo = state.messages.clone();
     let chat = state.chat.clone();
-    let users = state.users.clone();
 
     let mut rx = chat.subscribe(&user_id).await;
 
@@ -70,39 +102,21 @@ pub async fn chat_ws(
                 tokio::select! {
                     frame = stream.next() => {
                         let Some(Ok(ws::Message::Text(text))) = frame else { break };
-                        let text_str = text.to_string();
-                        let Ok(incoming) = serde_json::from_str::<WsIncoming>(&text_str) else { continue };
+                        let Ok(incoming) = serde_json::from_str::<WsIncoming>(&text.to_string()) else { continue };
                         if incoming.content.trim().is_empty() { continue; }
 
-                        let to_name = users
-                            .find_by_id(&incoming.to_user_id)
-                            .await
-                            .ok()
-                            .flatten()
-                            .map(|u| u.name)
-                            .unwrap_or_default();
-
-                        let m = Message::new(
-                            &user_id,
-                            &user_name,
-                            &incoming.to_user_id,
-                            &to_name,
-                            &incoming.content,
-                        );
-                        let resp = MessageResponse::from(m.clone());
+                        let m = Message::new(&user_id, &incoming.to_user_id, &incoming.content);
+                        let resp = build_msg_response(&m, &user_name);
                         let _ = msg_repo.create(&m).await;
 
                         if let Ok(json) = serde_json::to_string(&resp) {
                             chat.send_to(&incoming.to_user_id, json.clone()).await;
-                            // Echo to sender so their UI updates immediately
                             chat.send_to(&user_id, json).await;
                         }
                     }
                     result = rx.recv() => {
                         match result {
-                            Ok(text) => {
-                                let _ = stream.send(ws::Message::Text(text.into())).await;
-                            }
+                            Ok(text) => { let _ = stream.send(ws::Message::Text(text.into())).await; }
                             _ => break,
                         }
                     }

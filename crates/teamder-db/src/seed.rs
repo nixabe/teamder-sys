@@ -169,7 +169,6 @@ async fn seed_projects(db: &DbClient) -> Result<()> {
     let mut p1 = Project::new(
         "Campus Event Finder",
         &admin.id,
-        &admin.name,
         "A mobile-first web app that aggregates campus events across all departments and lets students RSVP, bookmark, and get reminders.",
     );
     p1.icon = "CE".into();
@@ -189,7 +188,6 @@ async fn seed_projects(db: &DbClient) -> Result<()> {
     let mut p2 = Project::new(
         "Open-Source Course Scheduler",
         &admin.id,
-        &admin.name,
         "A constraint-solver-powered tool that auto-generates conflict-free course timetables from student preference forms.",
     );
     p2.icon = "CS".into();
@@ -209,7 +207,6 @@ async fn seed_projects(db: &DbClient) -> Result<()> {
     let mut p3 = Project::new(
         "AI Study Buddy",
         &admin.id,
-        &admin.name,
         "A RAG-based chatbot that ingests your lecture notes and answers questions, generates quizzes, and summarises key concepts.",
     );
     p3.icon = "AI".into();

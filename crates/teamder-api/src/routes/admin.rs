@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use rocket::{Route, State, serde::json::Json};
 use serde_json::{Value, json};
 
@@ -64,13 +65,17 @@ async fn list_projects(
     let limit = limit.unwrap_or(50).min(200);
     let skip = skip.unwrap_or(0);
 
-    let projects: Vec<ProjectResponse> = state
-        .projects
-        .list(limit, skip)
-        .await?
-        .into_iter()
-        .map(ProjectResponse::from)
-        .collect();
+    let raw = state.projects.list(limit, skip).await?;
+    let lead_ids: Vec<&str> = {
+        let mut ids: Vec<&str> = raw.iter().map(|p| p.lead_user_id.as_str()).collect();
+        ids.sort_unstable(); ids.dedup(); ids
+    };
+    let users = state.users.find_many_by_ids(&lead_ids).await?;
+    let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
+    let projects: Vec<ProjectResponse> = raw.into_iter().map(|p| {
+        let lead_name = names.get(p.lead_user_id.as_str()).copied().unwrap_or("").to_string();
+        ProjectResponse::from_project(p, lead_name)
+    }).collect();
 
     let total = state.projects.count().await?;
 
