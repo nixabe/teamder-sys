@@ -53,6 +53,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # CORS
 rocket_cors = "0.6"
 
+# WebSockets
+rocket_ws = "0.1"
+
 # bcrypt for passwords
 bcrypt = "0.15"
 

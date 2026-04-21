@@ -34,3 +34,4 @@ bcrypt = { workspace = true }
 jsonwebtoken = { workspace = true }
 dotenvy = { workspace = true }
 rocket_cors = { workspace = true }
+rocket_ws = { workspace = true }

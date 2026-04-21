@@ -10,6 +10,7 @@ use chrono::Utc;
 
 use crate::DbClient;
 
+#[derive(Clone)]
 pub struct UserRepo {
     col: Collection<User>,
 }
