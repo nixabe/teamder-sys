@@ -95,6 +95,7 @@ async fn create_project(
     if let Some(v) = req.is_public { project.is_public = v; }
     if let Some(v) = &req.icon { project.icon = v.clone(); }
     if let Some(v) = &req.icon_bg { project.icon_bg = v.clone(); }
+    if let Some(v) = req.join_mode.clone() { project.join_mode = v; }
 
     state.projects.create(&project).await?;
 

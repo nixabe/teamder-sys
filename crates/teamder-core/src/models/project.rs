@@ -124,9 +124,9 @@ pub struct CreateProjectRequest {
     pub duration: Option<String>,
     pub category: Option<String>,
     pub is_public: Option<bool>,
-    pub join_mode: Option<JoinMode>,
     pub icon: Option<String>,
     pub icon_bg: Option<String>,
+    pub join_mode: Option<JoinMode>,
 }
 
 #[derive(Debug, Deserialize)]

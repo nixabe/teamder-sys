@@ -72,6 +72,7 @@ async fn create_group(
     group.duration_weeks = req.duration_weeks;
     if let Some(v) = &req.icon { group.icon = v.clone(); }
     if let Some(v) = &req.icon_bg { group.icon_bg = v.clone(); }
+    if let Some(v) = req.join_mode.clone() { group.join_mode = v; }
 
     state.study_groups.create(&group).await?;
     Ok(Json(group.into()))

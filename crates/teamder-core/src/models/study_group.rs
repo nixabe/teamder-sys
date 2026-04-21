@@ -87,6 +87,7 @@ pub struct CreateStudyGroupRequest {
     pub duration_weeks: u8,
     pub icon: Option<String>,
     pub icon_bg: Option<String>,
+    pub join_mode: Option<JoinMode>,
 }
 
 /// A member entry enriched with the user's name (resolved at API layer).
