@@ -3,6 +3,7 @@ pub mod auth;
 pub mod chat;
 pub mod competitions;
 pub mod invites;
+pub mod join_requests;
 pub mod projects;
 pub mod study_groups;
 pub mod uploads;

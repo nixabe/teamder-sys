@@ -5,7 +5,7 @@ use mongodb::{
 };
 use teamder_core::{
     error::TeamderError,
-    models::project::{Project, UpdateProjectRequest},
+    models::project::{Project, TeamMember, UpdateProjectRequest},
 };
 use chrono::Utc;
 
@@ -133,10 +133,28 @@ impl ProjectRepo {
                 .map_err(|e| TeamderError::Internal(e.to_string()))?;
             update_doc.insert("skills", bson);
         }
+        if let Some(v) = &req.join_mode {
+            let bson = mongodb::bson::to_bson(v)
+                .map_err(|e| TeamderError::Internal(e.to_string()))?;
+            update_doc.insert("join_mode", bson);
+        }
         update_doc.insert("updated_at", Utc::now().to_rfc3339());
 
         self.col
             .update_one(doc! { "_id": id }, doc! { "$set": update_doc })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn add_member(&self, project_id: &str, member: &TeamMember) -> Result<(), TeamderError> {
+        let member_bson = mongodb::bson::to_bson(member)
+            .map_err(|e| TeamderError::Internal(e.to_string()))?;
+        self.col
+            .update_one(
+                doc! { "_id": project_id },
+                doc! { "$push": { "team": member_bson } },
+            )
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
