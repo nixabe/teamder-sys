@@ -89,6 +89,40 @@ pub struct CreateStudyGroupRequest {
     pub icon_bg: Option<String>,
 }
 
+/// A member entry enriched with the user's name (resolved at API layer).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupMemberEnriched {
+    pub user_id: String,
+    pub name: String,
+    pub initials: String,
+    pub color: String,
+    pub joined_at: DateTime<Utc>,
+    pub streak: u32,
+}
+
+/// Full detail response used for joined/managed study groups.
+#[derive(Debug, Serialize)]
+pub struct StudyGroupDetail {
+    pub id: String,
+    pub name: String,
+    pub goal: String,
+    pub icon: String,
+    pub icon_bg: String,
+    pub subject: String,
+    pub tags: Vec<String>,
+    pub members: Vec<GroupMemberEnriched>,
+    pub max_members: u8,
+    pub schedule: String,
+    pub duration_weeks: u8,
+    pub current_week: u8,
+    pub progress_percent: u8,
+    pub is_open: bool,
+    pub join_mode: JoinMode,
+    pub created_by: String,
+    pub creator_name: String,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct StudyGroupResponse {
     pub id: String,
@@ -105,6 +139,7 @@ pub struct StudyGroupResponse {
     pub current_week: u8,
     pub progress_percent: u8,
     pub is_open: bool,
+    pub join_mode: JoinMode,
     pub created_at: DateTime<Utc>,
 }
 
@@ -127,6 +162,7 @@ impl From<StudyGroup> for StudyGroupResponse {
             current_week: g.current_week,
             progress_percent: progress,
             is_open: g.is_open,
+            join_mode: g.join_mode,
             created_at: g.created_at,
         }
     }

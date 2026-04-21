@@ -43,6 +43,16 @@ pub struct TeamMember {
     pub joined_at: DateTime<Utc>,
 }
 
+/// TeamMember enriched with the user's resolved name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamMemberEnriched {
+    pub user_id: String,
+    pub name: String,
+    pub initials: String,
+    pub color: String,
+    pub joined_at: DateTime<Utc>,
+}
+
 /// Core project document in `projects` collection. lead_name resolved at API layer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
@@ -132,6 +142,30 @@ pub struct UpdateProjectRequest {
     pub duration: Option<String>,
     pub is_public: Option<bool>,
     pub join_mode: Option<JoinMode>,
+}
+
+/// Full project detail with enriched member names, used for joined/managed views.
+#[derive(Debug, Serialize)]
+pub struct ProjectDetail {
+    pub id: String,
+    pub name: String,
+    pub lead_user_id: String,
+    pub lead_name: String,
+    pub icon: String,
+    pub icon_bg: String,
+    pub status: ProjectStatus,
+    pub description: String,
+    pub goals: Option<String>,
+    pub roles: Vec<ProjectRole>,
+    pub skills: Vec<String>,
+    pub team: Vec<TeamMemberEnriched>,
+    pub deadline: Option<String>,
+    pub collab: CollabMode,
+    pub duration: Option<String>,
+    pub category: Option<String>,
+    pub is_public: bool,
+    pub join_mode: JoinMode,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize)]

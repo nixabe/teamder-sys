@@ -71,6 +71,16 @@ impl ProjectRepo {
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
+    pub async fn list_by_member(&self, user_id: &str) -> Result<Vec<Project>, TeamderError> {
+        let cursor = self
+            .col
+            .find(doc! { "team.user_id": user_id })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor.try_collect().await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
     pub async fn list_by_lead(&self, user_id: &str) -> Result<Vec<Project>, TeamderError> {
         let cursor = self
             .col

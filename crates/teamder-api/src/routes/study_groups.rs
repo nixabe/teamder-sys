@@ -1,8 +1,9 @@
 use rocket::{Route, State, serde::json::Json};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use teamder_core::{
     error::TeamderError,
-    models::study_group::{CreateStudyGroupRequest, GroupMember, StudyGroup, StudyGroupResponse},
+    models::study_group::{CreateStudyGroupRequest, GroupMember, GroupMemberEnriched, StudyGroup, StudyGroupDetail, StudyGroupResponse},
 };
 use chrono::Utc;
 
@@ -120,6 +121,51 @@ async fn checkin(id: String, auth: AuthUser, state: &State<AppState>) -> ApiResu
     Ok(Json(json!({ "success": true, "message": "Check-in recorded!" })))
 }
 
+/// GET /api/v1/study-groups/joined  (auth — groups where user is a member)
+#[get("/joined")]
+async fn joined_groups(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
+    use serde_json::json;
+    let user_id = &auth.0.sub;
+
+    // also include groups the user created
+    let mut all: Vec<StudyGroup> = state.study_groups.list_by_member(user_id).await?;
+    let created = state.study_groups.list_by_creator(user_id).await?;
+    for g in created {
+        if !all.iter().any(|x| x.id == g.id) { all.push(g); }
+    }
+
+    let mut member_ids: Vec<&str> = all.iter()
+        .flat_map(|g| std::iter::once(g.created_by.as_str())
+            .chain(g.members.iter().map(|m| m.user_id.as_str())))
+        .collect();
+    member_ids.sort_unstable(); member_ids.dedup();
+    let users = state.users.find_many_by_ids(&member_ids).await?;
+    let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
+
+    let data: Vec<StudyGroupDetail> = all.into_iter().map(|g| {
+        let creator_name = names.get(g.created_by.as_str()).copied().unwrap_or("").to_string();
+        let progress = g.progress_percent();
+        let members: Vec<GroupMemberEnriched> = g.members.iter().map(|m| GroupMemberEnriched {
+            user_id: m.user_id.clone(),
+            name: names.get(m.user_id.as_str()).copied().unwrap_or("").to_string(),
+            initials: m.initials.clone(),
+            color: m.color.clone(),
+            joined_at: m.joined_at,
+            streak: m.streak,
+        }).collect();
+        StudyGroupDetail {
+            id: g.id, name: g.name, goal: g.goal, icon: g.icon, icon_bg: g.icon_bg,
+            subject: g.subject, tags: g.tags, members, max_members: g.max_members,
+            schedule: g.schedule, duration_weeks: g.duration_weeks,
+            current_week: g.current_week, progress_percent: progress,
+            is_open: g.is_open, join_mode: g.join_mode,
+            created_by: g.created_by, creator_name, created_at: g.created_at,
+        }
+    }).collect();
+
+    Ok(Json(json!({ "data": data })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list_groups, get_group, create_group, join_group, checkin]
+    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups]
 }

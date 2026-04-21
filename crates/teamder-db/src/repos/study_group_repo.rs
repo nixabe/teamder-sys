@@ -36,6 +36,20 @@ impl StudyGroupRepo {
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
+    pub async fn list_by_member(&self, user_id: &str) -> Result<Vec<StudyGroup>, TeamderError> {
+        let cursor = self.col.find(doc! { "members.user_id": user_id }).await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor.try_collect().await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    pub async fn list_by_creator(&self, user_id: &str) -> Result<Vec<StudyGroup>, TeamderError> {
+        let cursor = self.col.find(doc! { "created_by": user_id }).await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor.try_collect().await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
     pub async fn list_open(&self) -> Result<Vec<StudyGroup>, TeamderError> {
         let cursor = self.col.find(doc! { "is_open": true }).await
             .map_err(|e| TeamderError::Database(e.to_string()))?;

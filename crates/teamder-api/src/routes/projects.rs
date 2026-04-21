@@ -3,7 +3,7 @@ use rocket::{Route, State, serde::json::Json};
 use serde_json::{Value, json};
 use teamder_core::{
     error::TeamderError,
-    models::project::{CreateProjectRequest, Project, ProjectResponse, UpdateProjectRequest},
+    models::project::{CreateProjectRequest, Project, ProjectDetail, ProjectResponse, TeamMemberEnriched, UpdateProjectRequest},
 };
 
 use crate::{error::ApiResult, guards::AuthUser, state::AppState};
@@ -157,6 +157,43 @@ async fn my_projects(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value
     Ok(Json(json!({ "data": projects })))
 }
 
+/// GET /api/v1/projects/joined  (auth — projects where current user is a team member)
+#[get("/joined")]
+async fn joined_projects(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
+    let user_id = &auth.0.sub;
+    let raw = state.projects.list_by_member(user_id).await?;
+
+    // Collect all unique user_ids from all teams + leads
+    let mut all_ids: Vec<&str> = raw.iter()
+        .flat_map(|p| std::iter::once(p.lead_user_id.as_str())
+            .chain(p.team.iter().map(|m| m.user_id.as_str())))
+        .collect();
+    all_ids.sort_unstable(); all_ids.dedup();
+    let users = state.users.find_many_by_ids(&all_ids).await?;
+    let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
+
+    let data: Vec<ProjectDetail> = raw.into_iter().map(|p| {
+        let lead_name = names.get(p.lead_user_id.as_str()).copied().unwrap_or("").to_string();
+        let team: Vec<TeamMemberEnriched> = p.team.iter().map(|m| TeamMemberEnriched {
+            user_id: m.user_id.clone(),
+            name: names.get(m.user_id.as_str()).copied().unwrap_or("").to_string(),
+            initials: m.initials.clone(),
+            color: m.color.clone(),
+            joined_at: m.joined_at,
+        }).collect();
+        ProjectDetail {
+            id: p.id, name: p.name, lead_user_id: p.lead_user_id, lead_name,
+            icon: p.icon, icon_bg: p.icon_bg, status: p.status,
+            description: p.description, goals: p.goals, roles: p.roles,
+            skills: p.skills, team, deadline: p.deadline, collab: p.collab,
+            duration: p.duration, category: p.category, is_public: p.is_public,
+            join_mode: p.join_mode, created_at: p.created_at,
+        }
+    }).collect();
+
+    Ok(Json(json!({ "data": data })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects]
+    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects, joined_projects]
 }
