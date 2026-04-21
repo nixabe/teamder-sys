@@ -1,9 +1,11 @@
 use teamder_db::{
     DbClient,
     repos::{
-        CompetitionRepo, InviteRepo, ProjectRepo, StudyGroupRepo, UserRepo,
+        CompetitionRepo, InviteRepo, MessageRepo, ProjectRepo, StudyGroupRepo, UserRepo,
     },
 };
+
+use crate::chat::ChatState;
 
 /// Shared application state injected into every Rocket handler.
 pub struct AppState {
@@ -12,6 +14,8 @@ pub struct AppState {
     pub competitions: CompetitionRepo,
     pub study_groups: StudyGroupRepo,
     pub invites: InviteRepo,
+    pub messages: MessageRepo,
+    pub chat: ChatState,
     pub jwt_secret: String,
 }
 
@@ -29,6 +33,8 @@ impl AppState {
             competitions: CompetitionRepo::new(&db),
             study_groups: StudyGroupRepo::new(&db),
             invites: InviteRepo::new(&db),
+            messages: MessageRepo::new(&db),
+            chat: ChatState::new(),
             jwt_secret,
         }
     }

@@ -2,6 +2,7 @@
 extern crate rocket;
 
 pub mod auth;
+pub mod chat;
 pub mod error;
 pub mod guards;
 pub mod routes;
@@ -50,6 +51,7 @@ pub async fn build_rocket(db_client: DbClient, jwt_secret: String) -> rocket::Ro
         .mount("/api/v1/competitions", routes::competitions::routes())
         .mount("/api/v1/study-groups", routes::study_groups::routes())
         .mount("/api/v1/invites", routes::invites::routes())
+        .mount("/api/v1/chat", routes::chat::routes())
         .mount("/api/v1/admin", routes::admin::routes())
         .mount("/api/v1/uploads", routes::uploads::routes())
 }
