@@ -2,6 +2,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub use crate::models::project::JoinMode;
+
+fn default_join_mode() -> JoinMode { JoinMode::Direct }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupMember {
     pub user_id: String,
@@ -29,6 +33,8 @@ pub struct StudyGroup {
     pub duration_weeks: u8,
     pub current_week: u8,
     pub is_open: bool,
+    #[serde(default = "default_join_mode")]
+    pub join_mode: JoinMode,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -55,6 +61,7 @@ impl StudyGroup {
             duration_weeks: 8,
             current_week: 1,
             is_open: true,
+            join_mode: JoinMode::Direct,
             created_by: created_by.into(),
             created_at: now,
             updated_at: now,

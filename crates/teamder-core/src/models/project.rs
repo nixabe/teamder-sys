@@ -13,6 +13,13 @@ pub enum ProjectStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub enum JoinMode {
+    Direct,
+    Approval,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum CollabMode {
     Remote,
     Hybrid,
@@ -56,9 +63,13 @@ pub struct Project {
     pub duration: Option<String>,
     pub category: Option<String>,
     pub is_public: bool,
+    #[serde(default = "default_join_mode")]
+    pub join_mode: JoinMode,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+fn default_join_mode() -> JoinMode { JoinMode::Direct }
 
 impl Project {
     pub fn new(
@@ -84,6 +95,7 @@ impl Project {
             duration: None,
             category: None,
             is_public: true,
+            join_mode: JoinMode::Direct,
             created_at: now,
             updated_at: now,
         }
@@ -102,6 +114,7 @@ pub struct CreateProjectRequest {
     pub duration: Option<String>,
     pub category: Option<String>,
     pub is_public: Option<bool>,
+    pub join_mode: Option<JoinMode>,
     pub icon: Option<String>,
     pub icon_bg: Option<String>,
 }
@@ -118,6 +131,7 @@ pub struct UpdateProjectRequest {
     pub collab: Option<CollabMode>,
     pub duration: Option<String>,
     pub is_public: Option<bool>,
+    pub join_mode: Option<JoinMode>,
 }
 
 #[derive(Debug, Serialize)]
@@ -139,6 +153,7 @@ pub struct ProjectResponse {
     pub duration: Option<String>,
     pub category: Option<String>,
     pub is_public: bool,
+    pub join_mode: JoinMode,
     pub created_at: DateTime<Utc>,
 }
 
@@ -162,6 +177,7 @@ impl ProjectResponse {
             duration: p.duration,
             category: p.category,
             is_public: p.is_public,
+            join_mode: p.join_mode,
             created_at: p.created_at,
         }
     }
