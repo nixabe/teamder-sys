@@ -31,6 +31,7 @@ pub enum CollabMode {
 pub struct ProjectRole {
     pub name: String,
     pub count_needed: u8,
+    #[serde(default)]
     pub filled: u8,
 }
 
