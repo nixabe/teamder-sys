@@ -19,6 +19,8 @@ pub struct Invite {
     pub from_user_id: String,
     pub from_user_name: String,
     pub to_user_id: String,
+    #[serde(default)]
+    pub to_user_name: String,
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     #[serde(default)]
@@ -36,6 +38,7 @@ impl Invite {
         from_user_id: impl Into<String>,
         from_user_name: impl Into<String>,
         to_user_id: impl Into<String>,
+        to_user_name: impl Into<String>,
     ) -> Self {
         let now = Utc::now();
         Self {
@@ -43,6 +46,7 @@ impl Invite {
             from_user_id: from_user_id.into(),
             from_user_name: from_user_name.into(),
             to_user_id: to_user_id.into(),
+            to_user_name: to_user_name.into(),
             project_id: None,
             project_name: None,
             study_group_id: None,
@@ -74,6 +78,7 @@ pub struct InviteResponse {
     pub from_user_id: String,
     pub from_user_name: String,
     pub to_user_id: String,
+    pub to_user_name: String,
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub study_group_id: Option<String>,
@@ -91,6 +96,7 @@ impl From<Invite> for InviteResponse {
             from_user_id: i.from_user_id,
             from_user_name: i.from_user_name,
             to_user_id: i.to_user_id,
+            to_user_name: i.to_user_name,
             project_id: i.project_id,
             project_name: i.project_name,
             study_group_id: i.study_group_id,
@@ -108,7 +114,7 @@ mod tests {
     use super::*;
 
     fn make_invite() -> Invite {
-        Invite::new("user-sender", "Alice Wang", "user-recipient")
+        Invite::new("user-sender", "Alice Wang", "user-recipient", "Bob Chen")
     }
 
     #[test]

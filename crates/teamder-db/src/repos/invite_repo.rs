@@ -37,6 +37,14 @@ impl InviteRepo {
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
+    pub async fn delete_by_id(&self, id: &str) -> Result<(), TeamderError> {
+        self.col
+            .delete_one(doc! { "_id": id })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn update_status(&self, id: &str, status: &InviteStatus) -> Result<(), TeamderError> {
         let status_bson = mongodb::bson::to_bson(status)
             .map_err(|e| TeamderError::Internal(e.to_string()))?;

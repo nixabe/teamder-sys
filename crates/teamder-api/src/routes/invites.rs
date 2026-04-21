@@ -14,8 +14,7 @@ async fn send_invite(
     auth: AuthUser,
     state: &State<AppState>,
 ) -> ApiResult<InviteResponse> {
-    // Verify recipient exists
-    let _ = state
+    let recipient = state
         .users
         .find_by_id(&req.to_user_id)
         .await?
@@ -27,7 +26,7 @@ async fn send_invite(
         .await?
         .ok_or_else(|| TeamderError::NotFound("Sender not found".into()))?;
 
-    let mut invite = Invite::new(&auth.0.sub, &sender.name, &req.to_user_id);
+    let mut invite = Invite::new(&auth.0.sub, &sender.name, &req.to_user_id, &recipient.name);
     invite.message = req.message.clone();
 
     // Resolve project name if project_id provided
@@ -117,6 +116,27 @@ async fn respond_invite(
     })))
 }
 
+/// DELETE /api/v1/invites/<id>  (auth — sender only)
+#[delete("/<id>")]
+async fn delete_invite(
+    id: String,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let invite = state
+        .invites
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Invite {} not found", id)))?;
+
+    if invite.from_user_id != auth.0.sub && !auth.0.is_admin {
+        return Err(TeamderError::Forbidden.into());
+    }
+
+    state.invites.delete_by_id(&id).await?;
+    Ok(Json(json!({ "success": true })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![send_invite, list_invites, get_invite, respond_invite]
+    routes![send_invite, list_invites, get_invite, respond_invite, delete_invite]
 }
