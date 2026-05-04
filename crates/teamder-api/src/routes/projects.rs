@@ -47,7 +47,7 @@ async fn list_projects(
     } else if let Some(s) = status {
         state.projects.list_by_status(&s).await?
     } else {
-        state.projects.list(limit, skip).await?
+        state.projects.list_with_promotion(limit, skip).await?
     };
 
     let total = state.projects.count().await?;
@@ -188,7 +188,7 @@ async fn joined_projects(auth: AuthUser, state: &State<AppState>) -> ApiResult<V
             description: p.description, goals: p.goals, roles: p.roles,
             skills: p.skills, team, deadline: p.deadline, collab: p.collab,
             duration: p.duration, category: p.category, is_public: p.is_public,
-            join_mode: p.join_mode, created_at: p.created_at,
+            join_mode: p.join_mode, is_promoted: p.is_promoted, created_at: p.created_at,
         }
     }).collect();
 

@@ -38,6 +38,13 @@ pub struct Competition {
     pub description: String,
     pub is_featured: bool,
     pub registrations: Vec<Registration>,
+    /// User IDs who clicked "I'm interested" — used for the interest counter
+    /// and to recommend the competition to similar users.
+    #[serde(default)]
+    pub interested_user_ids: Vec<String>,
+    /// Optional winner roster, set after the competition concludes.
+    #[serde(default)]
+    pub winners: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -65,6 +72,8 @@ impl Competition {
             description: description.into(),
             is_featured: false,
             registrations: vec![],
+            interested_user_ids: vec![],
+            winners: vec![],
             created_at: now,
             updated_at: now,
         }
@@ -109,12 +118,15 @@ pub struct CompetitionResponse {
     pub description: String,
     pub is_featured: bool,
     pub registration_count: usize,
+    pub interested_count: usize,
+    pub winners: Vec<String>,
     pub created_at: DateTime<Utc>,
 }
 
 impl From<Competition> for CompetitionResponse {
     fn from(c: Competition) -> Self {
         let count = c.registrations.len();
+        let interested = c.interested_user_ids.len();
         Self {
             id: c.id,
             name: c.name,
@@ -131,6 +143,8 @@ impl From<Competition> for CompetitionResponse {
             description: c.description,
             is_featured: c.is_featured,
             registration_count: count,
+            interested_count: interested,
+            winners: c.winners,
             created_at: c.created_at,
         }
     }

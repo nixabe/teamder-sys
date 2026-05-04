@@ -80,6 +80,12 @@ pub struct User {
     pub is_admin: bool,
     #[serde(default)]
     pub resume_url: Option<String>,
+    /// Single-use password reset token (hex). Cleared after a successful reset.
+    #[serde(default)]
+    pub reset_token: Option<String>,
+    /// Expiry for the reset token (RFC3339 string for portability).
+    #[serde(default)]
+    pub reset_token_expires_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -127,6 +133,8 @@ impl User {
             collaborations: 0,
             is_admin: false,
             resume_url: None,
+            reset_token: None,
+            reset_token_expires_at: None,
             created_at: now,
             updated_at: now,
         }

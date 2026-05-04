@@ -178,6 +178,38 @@ impl ProjectRepo {
         Ok(())
     }
 
+    /// Toggle the is_promoted flag (admin or owner action).
+    pub async fn set_promoted(&self, id: &str, value: bool) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": id },
+                doc! { "$set": { "is_promoted": value, "updated_at": Utc::now().to_rfc3339() } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// List projects sorted with promoted ones first.
+    pub async fn list_with_promotion(&self, limit: i64, skip: u64) -> Result<Vec<Project>, TeamderError> {
+        use mongodb::options::FindOptions;
+        let opts = FindOptions::builder()
+            .limit(limit)
+            .skip(skip)
+            .sort(doc! { "is_promoted": -1, "created_at": -1 })
+            .build();
+        let cursor = self
+            .col
+            .find(doc! { "is_public": true })
+            .with_options(opts)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor
+            .try_collect()
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
     pub async fn count(&self) -> Result<u64, TeamderError> {
         self.col
             .count_documents(doc! {})

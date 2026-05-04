@@ -76,6 +76,9 @@ pub struct Project {
     pub is_public: bool,
     #[serde(default = "default_join_mode")]
     pub join_mode: JoinMode,
+    /// Paid/admin-promoted flag — surfaces this project at the top of listings.
+    #[serde(default)]
+    pub is_promoted: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -107,6 +110,7 @@ impl Project {
             category: None,
             is_public: true,
             join_mode: JoinMode::Direct,
+            is_promoted: false,
             created_at: now,
             updated_at: now,
         }
@@ -166,6 +170,7 @@ pub struct ProjectDetail {
     pub category: Option<String>,
     pub is_public: bool,
     pub join_mode: JoinMode,
+    pub is_promoted: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -189,6 +194,7 @@ pub struct ProjectResponse {
     pub category: Option<String>,
     pub is_public: bool,
     pub join_mode: JoinMode,
+    pub is_promoted: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -213,6 +219,7 @@ impl ProjectResponse {
             category: p.category,
             is_public: p.is_public,
             join_mode: p.join_mode,
+            is_promoted: p.is_promoted,
             created_at: p.created_at,
         }
     }

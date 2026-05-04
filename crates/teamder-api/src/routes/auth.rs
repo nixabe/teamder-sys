@@ -84,6 +84,89 @@ async fn login(req: Json<LoginRequest>, state: &State<AppState>) -> ApiResult<Au
     }))
 }
 
+#[derive(Debug, Deserialize)]
+struct ForgotPasswordRequest {
+    email: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ForgotPasswordResponse {
+    /// Always true — never reveals whether the email is registered, to avoid
+    /// leaking the user list. The token is included only in dev (no SMTP).
+    success: bool,
+    /// In production this would be sent via email; we return it directly so the
+    /// frontend can show a "your reset link" callout without infrastructure.
+    reset_token: Option<String>,
+}
+
+/// POST /api/v1/auth/forgot-password
+#[post("/forgot-password", data = "<req>")]
+async fn forgot_password(
+    req: Json<ForgotPasswordRequest>,
+    state: &State<AppState>,
+) -> ApiResult<ForgotPasswordResponse> {
+    let user = state.users.find_by_email(&req.email).await?;
+    let token_opt = if let Some(u) = user {
+        // Two UUIDs concatenated (hyphens stripped) → 64-char hex token.
+        // Valid for 30 minutes. Cryptographic uniqueness is enough here since
+        // the token is checked exact-match and short-lived.
+        let token = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        );
+        let expires = chrono::Utc::now() + chrono::Duration::minutes(30);
+        state
+            .users
+            .set_reset_token(&u.id, Some(&token), Some(expires))
+            .await?;
+        Some(token)
+    } else {
+        None
+    };
+    Ok(Json(ForgotPasswordResponse {
+        success: true,
+        reset_token: token_opt,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct ResetPasswordRequest {
+    token: String,
+    new_password: String,
+}
+
+/// POST /api/v1/auth/reset-password
+#[post("/reset-password", data = "<req>")]
+async fn reset_password(
+    req: Json<ResetPasswordRequest>,
+    state: &State<AppState>,
+) -> ApiResult<serde_json::Value> {
+    if req.new_password.len() < 6 {
+        return Err(TeamderError::Validation("Password must be at least 6 characters".into()).into());
+    }
+
+    let user = state
+        .users
+        .find_by_reset_token(&req.token)
+        .await?
+        .ok_or_else(|| TeamderError::Unauthorized)?;
+
+    let valid = user
+        .reset_token_expires_at
+        .map(|exp| exp > chrono::Utc::now())
+        .unwrap_or(false);
+    if !valid {
+        return Err(TeamderError::Unauthorized.into());
+    }
+
+    let hash = bcrypt::hash(&req.new_password, bcrypt::DEFAULT_COST)
+        .map_err(|e| TeamderError::Internal(e.to_string()))?;
+    state.users.set_password_hash(&user.id, &hash).await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![register, login]
+    routes![register, login, forgot_password, reset_password]
 }

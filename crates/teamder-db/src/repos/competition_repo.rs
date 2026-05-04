@@ -56,6 +56,40 @@ impl CompetitionRepo {
         Ok(())
     }
 
+    /// Add user to interested list (idempotent).
+    pub async fn add_interested(&self, comp_id: &str, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": comp_id },
+                doc! { "$addToSet": { "interested_user_ids": user_id } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn remove_interested(&self, comp_id: &str, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": comp_id },
+                doc! { "$pull": { "interested_user_ids": user_id } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn set_winners(&self, comp_id: &str, winners: Vec<String>) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": comp_id },
+                doc! { "$set": { "winners": winners } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn count(&self) -> Result<u64, TeamderError> {
         self.col.count_documents(doc! {}).await
             .map_err(|e| TeamderError::Database(e.to_string()))

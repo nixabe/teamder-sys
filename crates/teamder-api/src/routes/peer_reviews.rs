@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use teamder_core::{
     error::TeamderError,
     models::{
+        notification::{Notification, NotificationKind},
         peer_review::{CreatePeerReviewRequest, PeerReview, PeerReviewResponse},
         user::Review,
     },
@@ -101,6 +102,18 @@ async fn create_review(
         created_at: review.created_at,
     };
     state.users.push_review(&reviewee.id, &embedded).await?;
+
+    // Notify the reviewee.
+    let n = Notification::new(
+        reviewee.id.clone(),
+        NotificationKind::Review,
+        "New peer review",
+        format!("{} left you a review on {}", reviewer.name, review.project_name),
+        Some(format!("/profile/{}", reviewee.id)),
+    );
+    if let Err(e) = state.notifications.create(&n).await {
+        tracing::warn!("failed to create review notification: {e}");
+    }
 
     Ok(Json(review.into()))
 }

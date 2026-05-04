@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use teamder_core::{
     error::TeamderError,
     models::invite::{Invite, InviteResponse, RespondInviteRequest, SendInviteRequest, InviteStatus},
+    models::notification::{Notification, NotificationKind},
 };
 
 use crate::{error::ApiResult, guards::AuthUser, state::AppState};
@@ -98,6 +99,21 @@ async fn send_invite(
 
     state.invites.create(&invite).await?;
 
+    // Drop a notification for the recipient. Failure here shouldn't break the
+    // invite flow, so we log and continue.
+    let from_user = state.users.find_by_id(&invite.from_user_id).await?;
+    let from_name = from_user.as_ref().map(|u| u.name.clone()).unwrap_or_default();
+    let n = Notification::new(
+        invite.to_user_id.clone(),
+        NotificationKind::Invite,
+        "New invite",
+        format!("{} invited you to collaborate", from_name),
+        Some("/invites".into()),
+    );
+    if let Err(e) = state.notifications.create(&n).await {
+        tracing::warn!("failed to create invite notification: {e}");
+    }
+
     // Build full response with resolved names
     let project_name = if let Some(pid) = &invite.project_id {
         state.projects.find_by_id(pid).await?.map(|p| p.name)
@@ -176,6 +192,21 @@ async fn respond_invite(
 
     let new_status = if req.accept { InviteStatus::Accepted } else { InviteStatus::Declined };
     state.invites.update_status(&id, &new_status).await?;
+
+    // Notify the original sender about the response.
+    let recipient_name = state
+        .users
+        .find_by_id(&auth.0.sub)
+        .await?
+        .map(|u| u.name)
+        .unwrap_or_default();
+    let kind = if req.accept { NotificationKind::InviteAccepted } else { NotificationKind::InviteDeclined };
+    let title = if req.accept { "Invite accepted" } else { "Invite declined" };
+    let body = format!("{} {} your invite", recipient_name, if req.accept { "accepted" } else { "declined" });
+    let n = Notification::new(invite.from_user_id.clone(), kind, title, body, Some("/invites".into()));
+    if let Err(e) = state.notifications.create(&n).await {
+        tracing::warn!("failed to create invite-respond notification: {e}");
+    }
 
     Ok(Json(json!({
         "success": true,
