@@ -221,6 +221,43 @@ impl UserRepo {
         Ok(())
     }
 
+    /// Update the cached rating + review count on the user document.
+    pub async fn set_rating(&self, id: &str, rating: f32, count: u32) -> Result<(), TeamderError> {
+        let filter = doc! { "_id": id };
+        let update = doc! {
+            "$set": {
+                "rating": rating as f64,
+                "collaborations": count as i64,
+                "updated_at": Utc::now().to_rfc3339(),
+            }
+        };
+        self.col
+            .update_one(filter, update)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Push an embedded Review entry (cached on the user document for quick display).
+    pub async fn push_review(
+        &self,
+        user_id: &str,
+        review: &teamder_core::models::user::Review,
+    ) -> Result<(), TeamderError> {
+        use mongodb::bson::to_bson;
+        let bson = to_bson(review).map_err(|e| TeamderError::Database(e.to_string()))?;
+        let filter = doc! { "_id": user_id };
+        let update = doc! {
+            "$push": { "reviews": bson },
+            "$set": { "updated_at": Utc::now().to_rfc3339() },
+        };
+        self.col
+            .update_one(filter, update)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn count(&self) -> Result<u64, TeamderError> {
         self.col
             .count_documents(doc! {})

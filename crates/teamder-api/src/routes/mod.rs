@@ -8,3 +8,5 @@ pub mod projects;
 pub mod study_groups;
 pub mod uploads;
 pub mod users;
+pub mod peer_reviews;
+pub mod skills;

@@ -55,6 +55,8 @@ pub async fn build_rocket(db_client: DbClient, jwt_secret: String) -> rocket::Ro
         .mount("/api/v1/chat", routes::chat::routes())
         .mount("/api/v1/admin", routes::admin::routes())
         .mount("/api/v1/uploads", routes::uploads::routes())
+        .mount("/api/v1/reviews", routes::peer_reviews::routes())
+        .mount("/api/v1/skills", routes::skills::routes())
 }
 
 #[get("/")]

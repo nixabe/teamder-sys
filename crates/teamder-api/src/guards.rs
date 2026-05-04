@@ -30,6 +30,25 @@ impl<'r> FromRequest<'r> for AuthUser {
     }
 }
 
+/// Optional authentication — succeeds with `Some(Claims)` when a valid token is
+/// present, or `None` otherwise. Never fails the request.
+pub struct OptionalAuth(pub Option<Claims>);
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for OptionalAuth {
+    type Error = ();
+
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let state = req.rocket().state::<AppState>().unwrap();
+        let token = req
+            .headers()
+            .get_one("Authorization")
+            .and_then(|v| v.strip_prefix("Bearer "));
+        let claims = token.and_then(|t| crate::auth::verify_token(t, &state.jwt_secret).ok());
+        Outcome::Success(OptionalAuth(claims))
+    }
+}
+
 /// Request guard that additionally requires the user to be an admin.
 pub struct AdminUser(#[allow(dead_code)] pub Claims);
 

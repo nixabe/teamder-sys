@@ -1,7 +1,8 @@
 use teamder_db::{
     DbClient,
     repos::{
-        CompetitionRepo, InviteRepo, JoinRequestRepo, MessageRepo, ProjectRepo, StudyGroupRepo, UserRepo,
+        CompetitionRepo, InviteRepo, JoinRequestRepo, MessageRepo, PeerReviewRepo, ProjectRepo,
+        StudyGroupRepo, UserRepo,
     },
 };
 
@@ -16,6 +17,7 @@ pub struct AppState {
     pub invites: InviteRepo,
     pub messages: MessageRepo,
     pub join_requests: JoinRequestRepo,
+    pub peer_reviews: PeerReviewRepo,
     pub chat: ChatState,
     pub jwt_secret: String,
 }
@@ -36,6 +38,7 @@ impl AppState {
             invites: InviteRepo::new(&db),
             messages: MessageRepo::new(&db),
             join_requests: JoinRequestRepo::new(&db),
+            peer_reviews: PeerReviewRepo::new(&db),
             chat: ChatState::new(),
             jwt_secret,
         }
