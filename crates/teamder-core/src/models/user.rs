@@ -86,9 +86,26 @@ pub struct User {
     /// Expiry for the reset token (RFC3339 string for portability).
     #[serde(default)]
     pub reset_token_expires_at: Option<DateTime<Utc>>,
+    /// Has the user completed the onboarding wizard?
+    #[serde(default)]
+    pub onboarded: bool,
+    /// Short one-liner shown above the bio (e.g. "Designer + frontend dev").
+    #[serde(default)]
+    pub headline: Option<String>,
+    /// Email notifications opt-in (kept here so the prefs travel with the user).
+    #[serde(default = "default_true")]
+    pub notify_email: bool,
+    /// In-app notifications opt-in.
+    #[serde(default = "default_true")]
+    pub notify_in_app: bool,
+    /// Public profile flag. When false, the profile is hidden from search.
+    #[serde(default = "default_true")]
+    pub is_public: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+fn default_true() -> bool { true }
 
 impl User {
     pub fn new(
@@ -135,6 +152,11 @@ impl User {
             resume_url: None,
             reset_token: None,
             reset_token_expires_at: None,
+            onboarded: false,
+            headline: None,
+            notify_email: true,
+            notify_in_app: true,
+            is_public: true,
             created_at: now,
             updated_at: now,
         }
@@ -168,6 +190,11 @@ pub struct UpdateUserRequest {
     pub languages: Option<Vec<String>>,
     pub portfolio: Option<Vec<PortfolioItem>>,
     pub resume_url: Option<Option<String>>,
+    pub onboarded: Option<bool>,
+    pub headline: Option<Option<String>>,
+    pub notify_email: Option<bool>,
+    pub notify_in_app: Option<bool>,
+    pub is_public: Option<bool>,
 }
 
 /// Response shape returned to API clients (no password hash).
@@ -197,6 +224,11 @@ pub struct UserResponse {
     pub projects_done: u32,
     pub collaborations: u32,
     pub resume_url: Option<String>,
+    pub onboarded: bool,
+    pub headline: Option<String>,
+    pub notify_email: bool,
+    pub notify_in_app: bool,
+    pub is_public: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -227,6 +259,11 @@ impl From<User> for UserResponse {
             projects_done: u.projects_done,
             collaborations: u.collaborations,
             resume_url: u.resume_url,
+            onboarded: u.onboarded,
+            headline: u.headline,
+            notify_email: u.notify_email,
+            notify_in_app: u.notify_in_app,
+            is_public: u.is_public,
             created_at: u.created_at,
         }
     }

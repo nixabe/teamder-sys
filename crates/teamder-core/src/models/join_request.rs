@@ -10,13 +10,14 @@ pub enum JoinRequestStatus {
     Declined,
 }
 
-/// Stored in the `join_requests` collection.
+/// Stored in the `join_requests` collection. Represents an application to join
+/// a project, study group, or competition team.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JoinRequest {
     #[serde(rename = "_id")]
     pub id: String,
     pub from_user_id: String,
-    /// "project" or "study_group"
+    /// "project" | "study_group" | "competition_team"
     pub entity_type: String,
     pub entity_id: String,
     pub entity_name: String,
@@ -24,6 +25,21 @@ pub struct JoinRequest {
     pub owner_id: String,
     pub message: Option<String>,
     pub status: JoinRequestStatus,
+    /// Why the user wants to join — required for projects/teams.
+    #[serde(default)]
+    pub motivation: Option<String>,
+    /// Which role they're applying for (must match one of the project's roles).
+    #[serde(default)]
+    pub role_wanted: Option<String>,
+    /// Hours per week they can commit.
+    #[serde(default)]
+    pub hours_per_week: Option<String>,
+    /// Optional portfolio URL the applicant wants to highlight.
+    #[serde(default)]
+    pub portfolio_url: Option<String>,
+    /// Free-form text describing past relevant experience.
+    #[serde(default)]
+    pub relevant_experience: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -45,6 +61,11 @@ impl JoinRequest {
             owner_id: owner_id.into(),
             message,
             status: JoinRequestStatus::Pending,
+            motivation: None,
+            role_wanted: None,
+            hours_per_week: None,
+            portfolio_url: None,
+            relevant_experience: None,
             created_at: Utc::now(),
         }
     }
@@ -55,11 +76,24 @@ pub struct CreateJoinRequestBody {
     pub entity_type: String,
     pub entity_id: String,
     pub message: Option<String>,
+    #[serde(default)]
+    pub motivation: Option<String>,
+    #[serde(default)]
+    pub role_wanted: Option<String>,
+    #[serde(default)]
+    pub hours_per_week: Option<String>,
+    #[serde(default)]
+    pub portfolio_url: Option<String>,
+    #[serde(default)]
+    pub relevant_experience: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct RespondJoinRequestBody {
     pub accept: bool,
+    /// Optional decision note from the owner.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -73,5 +107,10 @@ pub struct JoinRequestResponse {
     pub owner_id: String,
     pub message: Option<String>,
     pub status: JoinRequestStatus,
+    pub motivation: Option<String>,
+    pub role_wanted: Option<String>,
+    pub hours_per_week: Option<String>,
+    pub portfolio_url: Option<String>,
+    pub relevant_experience: Option<String>,
     pub created_at: DateTime<Utc>,
 }

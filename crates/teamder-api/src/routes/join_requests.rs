@@ -23,6 +23,11 @@ fn enrich(req: JoinRequest, from_user_name: String) -> JoinRequestResponse {
         owner_id: req.owner_id,
         message: req.message,
         status: req.status,
+        motivation: req.motivation,
+        role_wanted: req.role_wanted,
+        hours_per_week: req.hours_per_week,
+        portfolio_url: req.portfolio_url,
+        relevant_experience: req.relevant_experience,
         created_at: req.created_at,
     }
 }
@@ -68,7 +73,7 @@ async fn create_request(
                     if state.join_requests.exists_for_user(user_id, &body.entity_id).await? {
                         return Err(TeamderError::Conflict("You already applied".into()).into());
                     }
-                    let req = JoinRequest::new(
+                    let mut req = JoinRequest::new(
                         user_id,
                         "project",
                         &body.entity_id,
@@ -76,7 +81,23 @@ async fn create_request(
                         &project.lead_user_id,
                         body.message.clone(),
                     );
+                    req.motivation = body.motivation.clone();
+                    req.role_wanted = body.role_wanted.clone();
+                    req.hours_per_week = body.hours_per_week.clone();
+                    req.portfolio_url = body.portfolio_url.clone();
+                    req.relevant_experience = body.relevant_experience.clone();
                     state.join_requests.create(&req).await?;
+                    // Notify project owner
+                    let from_user = state.users.find_by_id(user_id).await?;
+                    let from_name = from_user.as_ref().map(|u| u.name.clone()).unwrap_or_default();
+                    let n = teamder_core::models::notification::Notification::new(
+                        project.lead_user_id.clone(),
+                        teamder_core::models::notification::NotificationKind::JoinRequest,
+                        "New project application",
+                        format!("{} wants to join {}", from_name, project.name),
+                        Some("/invites".into()),
+                    );
+                    let _ = state.notifications.create(&n).await;
                     Ok(Json(json!({ "joined": false, "mode": "approval", "request_id": req.id })))
                 }
             }
@@ -117,7 +138,7 @@ async fn create_request(
                     if state.join_requests.exists_for_user(user_id, &body.entity_id).await? {
                         return Err(TeamderError::Conflict("You already applied".into()).into());
                     }
-                    let req = JoinRequest::new(
+                    let mut req = JoinRequest::new(
                         user_id,
                         "study_group",
                         &body.entity_id,
@@ -125,6 +146,7 @@ async fn create_request(
                         &group.created_by,
                         body.message.clone(),
                     );
+                    req.motivation = body.motivation.clone();
                     state.join_requests.create(&req).await?;
                     Ok(Json(json!({ "joined": false, "mode": "approval", "request_id": req.id })))
                 }
@@ -184,6 +206,31 @@ async fn respond(
     if req.status != JoinRequestStatus::Pending {
         return Err(TeamderError::Conflict("Already responded".into()).into());
     }
+
+    let kind = if body.accept {
+        teamder_core::models::notification::NotificationKind::JoinAccepted
+    } else {
+        teamder_core::models::notification::NotificationKind::JoinDeclined
+    };
+    let title = if body.accept { "Application accepted" } else { "Application declined" };
+    let body_text = format!(
+        "Your application to {} was {}{}",
+        req.entity_name,
+        if body.accept { "accepted" } else { "declined" },
+        body.note.as_ref().map(|n| format!(" — {}", n)).unwrap_or_default()
+    );
+    let n = teamder_core::models::notification::Notification::new(
+        req.from_user_id.clone(),
+        kind,
+        title,
+        body_text,
+        Some(if req.entity_type == "project" {
+            format!("/projects")
+        } else {
+            format!("/study-groups")
+        }),
+    );
+    let _ = state.notifications.create(&n).await;
 
     if body.accept {
         // Add member to the appropriate entity

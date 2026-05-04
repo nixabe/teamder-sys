@@ -11,3 +11,7 @@ pub mod users;
 pub mod peer_reviews;
 pub mod skills;
 pub mod notifications;
+pub mod competition_teams;
+pub mod bookmarks;
+pub mod search;
+pub mod project_updates;

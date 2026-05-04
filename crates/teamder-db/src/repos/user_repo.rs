@@ -165,6 +165,24 @@ impl UserRepo {
                 None => update_doc.insert("resume_url", mongodb::bson::Bson::Null),
             };
         }
+        if let Some(v) = &req.onboarded {
+            update_doc.insert("onboarded", *v);
+        }
+        if let Some(inner) = &req.headline {
+            match inner {
+                Some(text) => update_doc.insert("headline", text.clone()),
+                None => update_doc.insert("headline", mongodb::bson::Bson::Null),
+            };
+        }
+        if let Some(v) = &req.notify_email {
+            update_doc.insert("notify_email", *v);
+        }
+        if let Some(v) = &req.notify_in_app {
+            update_doc.insert("notify_in_app", *v);
+        }
+        if let Some(v) = &req.is_public {
+            update_doc.insert("is_public", *v);
+        }
         update_doc.insert("updated_at", Utc::now().to_rfc3339());
 
         let filter = doc! { "_id": id };

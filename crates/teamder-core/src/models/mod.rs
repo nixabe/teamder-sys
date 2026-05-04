@@ -7,3 +7,6 @@ pub mod message;
 pub mod join_request;
 pub mod peer_review;
 pub mod notification;
+pub mod competition_team;
+pub mod bookmark;
+pub mod project_update;

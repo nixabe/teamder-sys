@@ -7,6 +7,9 @@ pub mod message_repo;
 pub mod join_request_repo;
 pub mod peer_review_repo;
 pub mod notification_repo;
+pub mod competition_team_repo;
+pub mod bookmark_repo;
+pub mod project_update_repo;
 
 pub use user_repo::UserRepo;
 pub use project_repo::ProjectRepo;
@@ -17,3 +20,6 @@ pub use message_repo::MessageRepo;
 pub use join_request_repo::JoinRequestRepo;
 pub use peer_review_repo::PeerReviewRepo;
 pub use notification_repo::NotificationRepo;
+pub use competition_team_repo::CompetitionTeamRepo;
+pub use bookmark_repo::BookmarkRepo;
+pub use project_update_repo::ProjectUpdateRepo;

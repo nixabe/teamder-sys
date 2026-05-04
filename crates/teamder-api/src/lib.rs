@@ -58,6 +58,13 @@ pub async fn build_rocket(db_client: DbClient, jwt_secret: String) -> rocket::Ro
         .mount("/api/v1/reviews", routes::peer_reviews::routes())
         .mount("/api/v1/skills", routes::skills::routes())
         .mount("/api/v1/notifications", routes::notifications::routes())
+        .mount("/api/v1/competition-teams", routes::competition_teams::routes())
+        .mount("/api/v1/bookmarks", routes::bookmarks::routes())
+        .mount("/api/v1/search", routes::search::routes())
+        // Project updates live under /projects/<id>/updates so we mount on the
+        // same prefix used by projects::routes — Rocket is fine with multiple
+        // mounts on the same path.
+        .mount("/api/v1/projects", routes::project_updates::routes())
 }
 
 #[get("/")]
