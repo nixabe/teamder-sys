@@ -61,6 +61,27 @@ async fn register(
     if let Some(l) = &req.location {
         if !l.trim().is_empty() { user.location = Some(l.clone()); }
     }
+    if let Some(wm) = &req.work_mode {
+        user.work_mode = wm.clone();
+    }
+    if let Some(h) = &req.hours_per_week {
+        if !h.trim().is_empty() { user.hours_per_week = h.clone(); }
+    }
+    if let Some(langs) = &req.languages {
+        if !langs.is_empty() { user.languages = langs.clone(); }
+    }
+    if let Some(links) = &req.social_links {
+        user.social_links = links.clone();
+    }
+    if let Some(tags) = &req.interests {
+        user.interests = tags.clone();
+    }
+    if let Some(tz) = &req.timezone {
+        if !tz.trim().is_empty() { user.timezone = Some(tz.clone()); }
+    }
+    if let Some(g) = &req.goals {
+        if !g.trim().is_empty() { user.goals = Some(g.clone()); }
+    }
 
     state.users.create(&user).await?;
 

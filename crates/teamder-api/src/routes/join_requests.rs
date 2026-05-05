@@ -31,6 +31,10 @@ fn enrich(req: JoinRequest, from_user_name: String) -> JoinRequestResponse {
         availability_start: req.availability_start,
         can_meet_in_person: req.can_meet_in_person,
         additional_links: req.additional_links,
+        comm_channels: req.comm_channels,
+        timezone: req.timezone,
+        agreed_to_coc: req.agreed_to_coc,
+        skill_confidence: req.skill_confidence,
         created_at: req.created_at,
     }
 }
@@ -92,6 +96,10 @@ async fn create_request(
                     req.availability_start = body.availability_start.clone();
                     req.can_meet_in_person = body.can_meet_in_person;
                     req.additional_links = body.additional_links.clone();
+                    req.comm_channels = body.comm_channels.clone();
+                    req.timezone = body.timezone.clone();
+                    req.agreed_to_coc = body.agreed_to_coc;
+                    req.skill_confidence = body.skill_confidence.clone();
                     state.join_requests.create(&req).await?;
                     // Notify project owner
                     let from_user = state.users.find_by_id(user_id).await?;

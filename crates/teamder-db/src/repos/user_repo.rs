@@ -183,6 +183,26 @@ impl UserRepo {
         if let Some(v) = &req.is_public {
             update_doc.insert("is_public", *v);
         }
+        if let Some(v) = &req.social_links {
+            let bson = to_bson(v).map_err(|e| TeamderError::Database(e.to_string()))?;
+            update_doc.insert("social_links", bson);
+        }
+        if let Some(v) = &req.interests {
+            let arr: Vec<_> = v.iter().map(|s| mongodb::bson::Bson::String(s.clone())).collect();
+            update_doc.insert("interests", arr);
+        }
+        if let Some(inner) = &req.timezone {
+            match inner {
+                Some(tz) => update_doc.insert("timezone", tz.clone()),
+                None => update_doc.insert("timezone", mongodb::bson::Bson::Null),
+            };
+        }
+        if let Some(inner) = &req.goals {
+            match inner {
+                Some(g) => update_doc.insert("goals", g.clone()),
+                None => update_doc.insert("goals", mongodb::bson::Bson::Null),
+            };
+        }
         update_doc.insert("updated_at", Utc::now().to_rfc3339());
 
         let filter = doc! { "_id": id };

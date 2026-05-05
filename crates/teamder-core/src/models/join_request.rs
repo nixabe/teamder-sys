@@ -49,6 +49,20 @@ pub struct JoinRequest {
     /// Additional links — extra portfolio entries, write-ups, demos, etc.
     #[serde(default)]
     pub additional_links: Vec<String>,
+    /// Preferred communication channels ("Slack", "Discord", "Email").
+    #[serde(default)]
+    pub comm_channels: Vec<String>,
+    /// Time-zone string (IANA) so the lead can plan sync calls.
+    #[serde(default)]
+    pub timezone: Option<String>,
+    /// Whether the applicant agreed to the platform code of conduct.
+    #[serde(default)]
+    pub agreed_to_coc: bool,
+    /// Per-skill self-confidence (1–5) for the skills the project requires.
+    /// Stored as a flat list of "Skill: rating" strings to keep the schema
+    /// simple; the frontend renders them in a structured grid.
+    #[serde(default)]
+    pub skill_confidence: Vec<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -78,6 +92,10 @@ impl JoinRequest {
             availability_start: None,
             can_meet_in_person: None,
             additional_links: vec![],
+            comm_channels: vec![],
+            timezone: None,
+            agreed_to_coc: false,
+            skill_confidence: vec![],
             created_at: Utc::now(),
         }
     }
@@ -104,6 +122,14 @@ pub struct CreateJoinRequestBody {
     pub can_meet_in_person: Option<bool>,
     #[serde(default)]
     pub additional_links: Vec<String>,
+    #[serde(default)]
+    pub comm_channels: Vec<String>,
+    #[serde(default)]
+    pub timezone: Option<String>,
+    #[serde(default)]
+    pub agreed_to_coc: bool,
+    #[serde(default)]
+    pub skill_confidence: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,5 +159,9 @@ pub struct JoinRequestResponse {
     pub availability_start: Option<String>,
     pub can_meet_in_person: Option<bool>,
     pub additional_links: Vec<String>,
+    pub comm_channels: Vec<String>,
+    pub timezone: Option<String>,
+    pub agreed_to_coc: bool,
+    pub skill_confidence: Vec<String>,
     pub created_at: DateTime<Utc>,
 }

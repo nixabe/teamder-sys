@@ -139,6 +139,14 @@ struct ApplyTeamRequest {
     can_meet_in_person: Option<bool>,
     #[serde(default)]
     additional_links: Vec<String>,
+    #[serde(default)]
+    comm_channels: Vec<String>,
+    #[serde(default)]
+    timezone: Option<String>,
+    #[serde(default)]
+    agreed_to_coc: bool,
+    #[serde(default)]
+    skill_confidence: Vec<String>,
 }
 
 /// POST /api/v1/competition-teams/<id>/apply  (auth)
@@ -184,6 +192,10 @@ async fn apply_to_team(
     jr.availability_start = req.0.availability_start.clone();
     jr.can_meet_in_person = req.0.can_meet_in_person;
     jr.additional_links = req.0.additional_links.clone();
+    jr.comm_channels = req.0.comm_channels.clone();
+    jr.timezone = req.0.timezone.clone();
+    jr.agreed_to_coc = req.0.agreed_to_coc;
+    jr.skill_confidence = req.0.skill_confidence.clone();
     state.join_requests.create(&jr).await?;
 
     let n = Notification::new(
@@ -233,6 +245,10 @@ async fn list_applications(
             availability_start: r.availability_start.clone(),
             can_meet_in_person: r.can_meet_in_person,
             additional_links: r.additional_links.clone(),
+            comm_channels: r.comm_channels.clone(),
+            timezone: r.timezone.clone(),
+            agreed_to_coc: r.agreed_to_coc,
+            skill_confidence: r.skill_confidence.clone(),
             created_at: r.created_at,
         });
     }

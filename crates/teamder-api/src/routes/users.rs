@@ -197,6 +197,7 @@ async fn complete_onboarding(auth: AuthUser, state: &State<AppState>) -> ApiResu
         portfolio: None, resume_url: None,
         onboarded: Some(true),
         headline: None, notify_email: None, notify_in_app: None, is_public: None,
+        social_links: None, interests: None, timezone: None, goals: None,
     };
     state.users.update(&auth.0.sub, &req).await?;
     let _ = req;

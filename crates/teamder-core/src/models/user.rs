@@ -28,6 +28,14 @@ pub struct Skill {
     pub level: u8,
 }
 
+/// External social / professional link.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SocialLink {
+    /// Display label e.g. "GitHub", "LinkedIn", "Personal site".
+    pub label: String,
+    pub url: String,
+}
+
 /// Portfolio piece shown on a user's profile.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PortfolioItem {
@@ -101,6 +109,18 @@ pub struct User {
     /// Public profile flag. When false, the profile is hidden from search.
     #[serde(default = "default_true")]
     pub is_public: bool,
+    /// Social / professional links — displayed on the public profile.
+    #[serde(default)]
+    pub social_links: Vec<SocialLink>,
+    /// Free-form interest tags ("side projects", "research", "hackathons", …).
+    #[serde(default)]
+    pub interests: Vec<String>,
+    /// Time-zone string (IANA) used for scheduling hints. Optional.
+    #[serde(default)]
+    pub timezone: Option<String>,
+    /// Long-form personal goals — what the user is hoping to find / build.
+    #[serde(default)]
+    pub goals: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -157,6 +177,10 @@ impl User {
             notify_email: true,
             notify_in_app: true,
             is_public: true,
+            social_links: vec![],
+            interests: vec![],
+            timezone: None,
+            goals: None,
             created_at: now,
             updated_at: now,
         }
@@ -184,6 +208,27 @@ pub struct CreateUserRequest {
     /// Optional location string ("Taipei, Taiwan").
     #[serde(default)]
     pub location: Option<String>,
+    /// Optional preferred work mode set during signup.
+    #[serde(default)]
+    pub work_mode: Option<WorkMode>,
+    /// Optional weekly hours descriptor.
+    #[serde(default)]
+    pub hours_per_week: Option<String>,
+    /// Optional spoken languages list.
+    #[serde(default)]
+    pub languages: Option<Vec<String>>,
+    /// Optional social / professional links.
+    #[serde(default)]
+    pub social_links: Option<Vec<SocialLink>>,
+    /// Optional interest tags.
+    #[serde(default)]
+    pub interests: Option<Vec<String>>,
+    /// Optional time-zone (IANA string).
+    #[serde(default)]
+    pub timezone: Option<String>,
+    /// Optional long-form goals statement.
+    #[serde(default)]
+    pub goals: Option<String>,
 }
 
 /// Payload for updating profile fields.
@@ -208,6 +253,10 @@ pub struct UpdateUserRequest {
     pub notify_email: Option<bool>,
     pub notify_in_app: Option<bool>,
     pub is_public: Option<bool>,
+    pub social_links: Option<Vec<SocialLink>>,
+    pub interests: Option<Vec<String>>,
+    pub timezone: Option<Option<String>>,
+    pub goals: Option<Option<String>>,
 }
 
 /// Response shape returned to API clients (no password hash).
@@ -242,6 +291,10 @@ pub struct UserResponse {
     pub notify_email: bool,
     pub notify_in_app: bool,
     pub is_public: bool,
+    pub social_links: Vec<SocialLink>,
+    pub interests: Vec<String>,
+    pub timezone: Option<String>,
+    pub goals: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -277,6 +330,10 @@ impl From<User> for UserResponse {
             notify_email: u.notify_email,
             notify_in_app: u.notify_in_app,
             is_public: u.is_public,
+            social_links: u.social_links,
+            interests: u.interests,
+            timezone: u.timezone,
+            goals: u.goals,
             created_at: u.created_at,
         }
     }
