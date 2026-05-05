@@ -86,6 +86,19 @@ async fn list_projects(
     })))
 }
 
+/// POST /api/v1/admin/users/<id>/promote  (admin only)
+#[post("/users/<id>/promote", data = "<req>")]
+async fn promote_user(
+    id: String,
+    req: Json<Value>,
+    _admin: AdminUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let val = req.0.get("value").and_then(|v| v.as_bool()).unwrap_or(true);
+    state.users.set_admin(&id, val).await?;
+    Ok(Json(json!({ "success": true, "is_admin": val })))
+}
+
 /// POST /api/v1/admin/projects/<id>/promote  (admin only)
 #[post("/projects/<id>/promote", data = "<req>")]
 async fn promote_project(
@@ -217,5 +230,5 @@ async fn export_users_csv(_admin: AdminUser, state: &State<AppState>) -> Result<
 fn _silence(_: TeamderError) {}
 
 pub fn routes() -> Vec<Route> {
-    routes![stats, list_users, list_projects, promote_project, timeseries, export_users_csv]
+    routes![stats, list_users, list_projects, promote_project, promote_user, timeseries, export_users_csv]
 }

@@ -3,6 +3,7 @@ use mongodb::bson::doc;
 use teamder_core::models::{
     competition::{Competition, CompetitionStatus},
     project::{CollabMode, Project, ProjectRole, ProjectStatus},
+    skill_catalog::{StoredSkillCategory, StoredSkillTag},
     study_group::StudyGroup,
     user::{AvailabilityStatus, PortfolioItem, Review, Skill, User, WorkMode},
 };
@@ -29,8 +30,51 @@ pub async fn seed_if_empty(db: &DbClient) -> Result<()> {
     seed_projects(db).await?;
     seed_competitions(db).await?;
     seed_study_groups(db).await?;
+    seed_skill_catalog(db).await?;
 
     tracing::info!("Seed complete");
+    Ok(())
+}
+
+/// Seed the skill catalog from the hardcoded default if the
+/// `skill_categories` collection is empty. Safe on every boot.
+pub async fn seed_skill_catalog_if_empty(db: &DbClient) -> Result<()> {
+    let count = db
+        .db
+        .collection::<StoredSkillCategory>("skill_categories")
+        .count_documents(doc! {})
+        .await?;
+    if count > 0 {
+        return Ok(());
+    }
+    seed_skill_catalog(db).await
+}
+
+async fn seed_skill_catalog(db: &DbClient) -> Result<()> {
+    use teamder_core::skills::catalog as default_catalog;
+    let cats_col = db.db.collection::<StoredSkillCategory>("skill_categories");
+    let tags_col = db.db.collection::<StoredSkillTag>("skill_tags");
+
+    for (cat_idx, cat) in default_catalog().into_iter().enumerate() {
+        let stored_cat = StoredSkillCategory::new(
+            cat.key.to_string(),
+            cat.label.to_string(),
+            cat.label_zh.to_string(),
+            cat_idx as i32,
+        );
+        cats_col.insert_one(&stored_cat).await?;
+
+        for (tag_idx, tag) in cat.skills.into_iter().enumerate() {
+            let stored_tag = StoredSkillTag::new(
+                tag.name.to_string(),
+                tag.name_zh.to_string(),
+                cat.key.to_string(),
+                tag_idx as i32,
+            );
+            tags_col.insert_one(&stored_tag).await?;
+        }
+    }
+    tracing::info!("Seeded skill catalog from default");
     Ok(())
 }
 

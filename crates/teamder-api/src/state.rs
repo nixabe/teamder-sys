@@ -3,7 +3,7 @@ use teamder_db::{
     repos::{
         BookmarkRepo, CompetitionRepo, CompetitionTeamRepo, InviteRepo, JoinRequestRepo,
         MessageRepo, NotificationRepo, PeerReviewRepo, ProjectRepo, ProjectUpdateRepo,
-        StudyGroupRepo, UserRepo,
+        SkillCatalogRepo, StudyGroupRepo, UserRepo,
     },
 };
 
@@ -23,6 +23,7 @@ pub struct AppState {
     pub competition_teams: CompetitionTeamRepo,
     pub bookmarks: BookmarkRepo,
     pub project_updates: ProjectUpdateRepo,
+    pub skill_catalog: SkillCatalogRepo,
     pub chat: ChatState,
     pub jwt_secret: String,
 }
@@ -48,6 +49,7 @@ impl AppState {
             competition_teams: CompetitionTeamRepo::new(&db),
             bookmarks: BookmarkRepo::new(&db),
             project_updates: ProjectUpdateRepo::new(&db),
+            skill_catalog: SkillCatalogRepo::new(&db),
             chat: ChatState::new(),
             jwt_secret,
         }

@@ -352,6 +352,17 @@ impl UserRepo {
         Ok(())
     }
 
+    pub async fn set_admin(&self, id: &str, value: bool) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": id },
+                doc! { "$set": { "is_admin": value, "updated_at": Utc::now().to_rfc3339() } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn count(&self) -> Result<u64, TeamderError> {
         self.col
             .count_documents(doc! {})

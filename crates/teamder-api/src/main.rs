@@ -29,6 +29,11 @@ async fn main() -> Result<(), rocket::Error> {
     seed::seed_if_empty(&db_client)
         .await
         .expect("Failed to seed database");
+    // Catalog seed runs independently so existing deployments get the
+    // skill_categories collection populated on first boot of this version.
+    seed::seed_skill_catalog_if_empty(&db_client)
+        .await
+        .expect("Failed to seed skill catalog");
 
     teamder_api::build_rocket(db_client, jwt_secret)
         .await
