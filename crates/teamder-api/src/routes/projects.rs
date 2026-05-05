@@ -145,17 +145,40 @@ async fn delete_project(
     Ok(Json(json!({ "success": true })))
 }
 
-/// GET /api/v1/projects/my  (auth — projects led by current user)
+/// GET /api/v1/projects/my  (auth — projects led by current user, enriched
+/// like /joined so the My Teams page can render them with the same card.)
 #[get("/my")]
 async fn my_projects(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
     let raw = state.projects.list_by_lead(&auth.0.sub).await?;
-    let lead_name = state.users.find_by_id(&auth.0.sub).await?
-        .map(|u| u.name).unwrap_or_default();
-    let projects: Vec<ProjectResponse> = raw
-        .into_iter()
-        .map(|p| ProjectResponse::from_project(p, lead_name.clone()))
+
+    let mut all_ids: Vec<&str> = raw.iter()
+        .flat_map(|p| std::iter::once(p.lead_user_id.as_str())
+            .chain(p.team.iter().map(|m| m.user_id.as_str())))
         .collect();
-    Ok(Json(json!({ "data": projects })))
+    all_ids.sort_unstable(); all_ids.dedup();
+    let users = state.users.find_many_by_ids(&all_ids).await?;
+    let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
+
+    let data: Vec<ProjectDetail> = raw.into_iter().map(|p| {
+        let lead_name = names.get(p.lead_user_id.as_str()).copied().unwrap_or("").to_string();
+        let team: Vec<TeamMemberEnriched> = p.team.iter().map(|m| TeamMemberEnriched {
+            user_id: m.user_id.clone(),
+            name: names.get(m.user_id.as_str()).copied().unwrap_or("").to_string(),
+            initials: m.initials.clone(),
+            color: m.color.clone(),
+            joined_at: m.joined_at,
+        }).collect();
+        ProjectDetail {
+            id: p.id, name: p.name, lead_user_id: p.lead_user_id, lead_name,
+            icon: p.icon, icon_bg: p.icon_bg, status: p.status,
+            description: p.description, goals: p.goals, roles: p.roles,
+            skills: p.skills, team, deadline: p.deadline, collab: p.collab,
+            duration: p.duration, category: p.category, is_public: p.is_public,
+            join_mode: p.join_mode, is_promoted: p.is_promoted, created_at: p.created_at,
+        }
+    }).collect();
+
+    Ok(Json(json!({ "data": data })))
 }
 
 /// GET /api/v1/projects/joined  (auth — projects where current user is a team member)
