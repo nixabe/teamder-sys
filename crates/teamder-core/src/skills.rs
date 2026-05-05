@@ -508,6 +508,35 @@ fn availability_score(target: &User) -> f64 {
     }
 }
 
+/// Compute a 0–100 match score between a **project** and a user. Used by the
+/// "suggested teammates" feature so the project lead can see who fits the
+/// declared skill stack.
+///
+/// Components:
+/// - **Skill overlap (60%)** — Jaccard between project.skills and target.skill_tags
+/// - **Track record (20%)** — log-scaled projects_done × rating
+/// - **Availability (20%)** — open_for_collab → full credit
+pub fn compute_project_match_score(project: &Project, target: &User) -> u8 {
+    let p_skills: std::collections::HashSet<String> =
+        project.skills.iter().map(|s| s.to_lowercase()).collect();
+    let t_skills: std::collections::HashSet<String> =
+        target.skill_tags.iter().map(|s| s.to_lowercase()).collect();
+
+    let skill_overlap = if p_skills.is_empty() || t_skills.is_empty() {
+        30.0 // neutral baseline when one side has no info
+    } else {
+        let inter = p_skills.intersection(&t_skills).count() as f64;
+        let union = p_skills.union(&t_skills).count() as f64;
+        (inter / union * 100.0).clamp(0.0, 100.0)
+    };
+
+    let track = track_record_score(target);
+    let avail = availability_score(target);
+
+    let total = skill_overlap * 0.60 + track * 0.20 + avail * 0.20;
+    total.round().clamp(0.0, 100.0) as u8
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

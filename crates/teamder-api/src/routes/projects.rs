@@ -4,6 +4,8 @@ use serde_json::{Value, json};
 use teamder_core::{
     error::TeamderError,
     models::project::{CreateProjectRequest, Project, ProjectDetail, ProjectResponse, TeamMemberEnriched, UpdateProjectRequest},
+    models::user::UserResponse,
+    skills::compute_project_match_score,
 };
 
 use crate::{error::ApiResult, guards::AuthUser, state::AppState};
@@ -218,6 +220,56 @@ async fn joined_projects(auth: AuthUser, state: &State<AppState>) -> ApiResult<V
     Ok(Json(json!({ "data": data })))
 }
 
+/// GET /api/v1/projects/<id>/recommend?limit=10 — suggested teammates.
+///
+/// Returns up to `limit` users (default 10) ranked by `compute_project_match_score`
+/// against the project's required skills, excluding the lead and current team
+/// members. Available to anyone who can read the project.
+#[get("/<id>/recommend?<limit>")]
+async fn recommend_users(
+    id: String,
+    limit: Option<i64>,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let project = state
+        .projects
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Project {} not found", id)))?;
+
+    let limit = limit.unwrap_or(10).clamp(1, 50);
+    let pool = state.users.list(200, 0).await?;
+
+    let mut excluded: std::collections::HashSet<String> =
+        project.team.iter().map(|m| m.user_id.clone()).collect();
+    excluded.insert(project.lead_user_id.clone());
+
+    let mut scored: Vec<(u8, teamder_core::models::user::User)> = pool
+        .into_iter()
+        .filter(|u| !excluded.contains(&u.id) && u.is_public)
+        .map(|u| (compute_project_match_score(&project, &u), u))
+        .collect();
+
+    // Sort by score descending; tie-break on rating then projects_done.
+    scored.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| b.1.rating.partial_cmp(&a.1.rating).unwrap_or(std::cmp::Ordering::Equal))
+            .then_with(|| b.1.projects_done.cmp(&a.1.projects_done))
+    });
+
+    let data: Vec<Value> = scored
+        .into_iter()
+        .take(limit as usize)
+        .map(|(score, u)| {
+            let mut resp: UserResponse = u.into();
+            resp.match_score = score;
+            json!(resp)
+        })
+        .collect();
+
+    Ok(Json(json!({ "data": data, "project_id": project.id, "project_name": project.name })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects, joined_projects]
+    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects, joined_projects, recommend_users]
 }
