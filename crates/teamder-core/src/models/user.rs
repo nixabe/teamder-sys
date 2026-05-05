@@ -171,6 +171,19 @@ pub struct CreateUserRequest {
     pub name: String,
     pub role: String,
     pub department: String,
+    /// Optional school / institution. Falls back to "Fu Jen Catholic University"
+    /// (the platform's home campus) when missing.
+    #[serde(default)]
+    pub university: Option<String>,
+    /// Optional year-of-study label, e.g. "Year 3" / "Graduate".
+    #[serde(default)]
+    pub year: Option<String>,
+    /// Optional one-line bio shown next to the name.
+    #[serde(default)]
+    pub headline: Option<String>,
+    /// Optional location string ("Taipei, Taiwan").
+    #[serde(default)]
+    pub location: Option<String>,
 }
 
 /// Payload for updating profile fields.

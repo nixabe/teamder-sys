@@ -133,6 +133,12 @@ struct ApplyTeamRequest {
     hours_per_week: Option<String>,
     portfolio_url: Option<String>,
     relevant_experience: Option<String>,
+    #[serde(default)]
+    availability_start: Option<String>,
+    #[serde(default)]
+    can_meet_in_person: Option<bool>,
+    #[serde(default)]
+    additional_links: Vec<String>,
 }
 
 /// POST /api/v1/competition-teams/<id>/apply  (auth)
@@ -175,6 +181,9 @@ async fn apply_to_team(
     jr.hours_per_week = req.0.hours_per_week.clone();
     jr.portfolio_url = req.0.portfolio_url.clone();
     jr.relevant_experience = req.0.relevant_experience.clone();
+    jr.availability_start = req.0.availability_start.clone();
+    jr.can_meet_in_person = req.0.can_meet_in_person;
+    jr.additional_links = req.0.additional_links.clone();
     state.join_requests.create(&jr).await?;
 
     let n = Notification::new(
@@ -221,6 +230,9 @@ async fn list_applications(
             hours_per_week: r.hours_per_week.clone(),
             portfolio_url: r.portfolio_url.clone(),
             relevant_experience: r.relevant_experience.clone(),
+            availability_start: r.availability_start.clone(),
+            can_meet_in_person: r.can_meet_in_person,
+            additional_links: r.additional_links.clone(),
             created_at: r.created_at,
         });
     }

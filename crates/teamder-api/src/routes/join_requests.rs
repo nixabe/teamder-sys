@@ -28,6 +28,9 @@ fn enrich(req: JoinRequest, from_user_name: String) -> JoinRequestResponse {
         hours_per_week: req.hours_per_week,
         portfolio_url: req.portfolio_url,
         relevant_experience: req.relevant_experience,
+        availability_start: req.availability_start,
+        can_meet_in_person: req.can_meet_in_person,
+        additional_links: req.additional_links,
         created_at: req.created_at,
     }
 }
@@ -86,6 +89,9 @@ async fn create_request(
                     req.hours_per_week = body.hours_per_week.clone();
                     req.portfolio_url = body.portfolio_url.clone();
                     req.relevant_experience = body.relevant_experience.clone();
+                    req.availability_start = body.availability_start.clone();
+                    req.can_meet_in_person = body.can_meet_in_person;
+                    req.additional_links = body.additional_links.clone();
                     state.join_requests.create(&req).await?;
                     // Notify project owner
                     let from_user = state.users.find_by_id(user_id).await?;

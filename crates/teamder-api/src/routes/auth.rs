@@ -42,13 +42,25 @@ async fn register(
     let password_hash = bcrypt::hash(&req.password, bcrypt::DEFAULT_COST)
         .map_err(|e| TeamderError::Internal(e.to_string()))?;
 
-    let user = User::new(
+    let mut user = User::new(
         &req.email,
         password_hash,
         &req.name,
         &req.role,
         &req.department,
     );
+    if let Some(u) = &req.university {
+        if !u.trim().is_empty() { user.university = u.clone(); }
+    }
+    if let Some(y) = &req.year {
+        if !y.trim().is_empty() { user.year = y.clone(); }
+    }
+    if let Some(h) = &req.headline {
+        if !h.trim().is_empty() { user.headline = Some(h.clone()); }
+    }
+    if let Some(l) = &req.location {
+        if !l.trim().is_empty() { user.location = Some(l.clone()); }
+    }
 
     state.users.create(&user).await?;
 

@@ -40,6 +40,15 @@ pub struct JoinRequest {
     /// Free-form text describing past relevant experience.
     #[serde(default)]
     pub relevant_experience: Option<String>,
+    /// When the applicant can start (RFC3339 date or free-form string).
+    #[serde(default)]
+    pub availability_start: Option<String>,
+    /// Whether the applicant is willing/able to meet in person.
+    #[serde(default)]
+    pub can_meet_in_person: Option<bool>,
+    /// Additional links — extra portfolio entries, write-ups, demos, etc.
+    #[serde(default)]
+    pub additional_links: Vec<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -66,6 +75,9 @@ impl JoinRequest {
             hours_per_week: None,
             portfolio_url: None,
             relevant_experience: None,
+            availability_start: None,
+            can_meet_in_person: None,
+            additional_links: vec![],
             created_at: Utc::now(),
         }
     }
@@ -86,6 +98,12 @@ pub struct CreateJoinRequestBody {
     pub portfolio_url: Option<String>,
     #[serde(default)]
     pub relevant_experience: Option<String>,
+    #[serde(default)]
+    pub availability_start: Option<String>,
+    #[serde(default)]
+    pub can_meet_in_person: Option<bool>,
+    #[serde(default)]
+    pub additional_links: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -112,5 +130,8 @@ pub struct JoinRequestResponse {
     pub hours_per_week: Option<String>,
     pub portfolio_url: Option<String>,
     pub relevant_experience: Option<String>,
+    pub availability_start: Option<String>,
+    pub can_meet_in_person: Option<bool>,
+    pub additional_links: Vec<String>,
     pub created_at: DateTime<Utc>,
 }
