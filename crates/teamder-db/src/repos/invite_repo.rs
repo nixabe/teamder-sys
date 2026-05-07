@@ -37,6 +37,32 @@ impl InviteRepo {
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
+    /// Check whether a pending invite already exists from `from_id` to `to_id`
+    /// for the same project (or general, when `project_id` is None).
+    pub async fn find_pending_between(
+        &self,
+        from_id: &str,
+        to_id: &str,
+        project_id: Option<&str>,
+        study_group_id: Option<&str>,
+    ) -> Result<Option<Invite>, TeamderError> {
+        let mut filter = doc! {
+            "from_user_id": from_id,
+            "to_user_id": to_id,
+            "status": "pending",
+        };
+        match project_id {
+            Some(pid) => filter.insert("project_id", pid),
+            None => filter.insert("project_id", mongodb::bson::Bson::Null),
+        };
+        match study_group_id {
+            Some(sgid) => filter.insert("study_group_id", sgid),
+            None => filter.insert("study_group_id", mongodb::bson::Bson::Null),
+        };
+        self.col.find_one(filter).await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
     pub async fn delete_by_id(&self, id: &str) -> Result<(), TeamderError> {
         self.col
             .delete_one(doc! { "_id": id })

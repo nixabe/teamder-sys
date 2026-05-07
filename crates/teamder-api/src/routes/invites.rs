@@ -97,6 +97,21 @@ async fn send_invite(
         }
     }
 
+    // Reject duplicate pending invites between the same pair for the same context.
+    let existing = state.invites
+        .find_pending_between(
+            &auth.0.sub,
+            &req.to_user_id,
+            invite.project_id.as_deref(),
+            invite.study_group_id.as_deref(),
+        )
+        .await?;
+    if existing.is_some() {
+        return Err(TeamderError::Conflict(
+            "A pending invite to this user already exists".into(),
+        ).into());
+    }
+
     state.invites.create(&invite).await?;
 
     // Drop a notification for the recipient. Failure here shouldn't break the
