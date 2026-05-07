@@ -87,6 +87,8 @@ pub struct User {
     pub collaborations: u32,
     pub is_admin: bool,
     #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
     pub resume_url: Option<String>,
     /// Single-use password reset token (hex). Cleared after a successful reset.
     #[serde(default)]
@@ -169,6 +171,7 @@ impl User {
             projects_done: 0,
             collaborations: 0,
             is_admin: false,
+            avatar_url: None,
             resume_url: None,
             reset_token: None,
             reset_token_expires_at: None,
@@ -247,6 +250,7 @@ pub struct UpdateUserRequest {
     pub hours_per_week: Option<String>,
     pub languages: Option<Vec<String>>,
     pub portfolio: Option<Vec<PortfolioItem>>,
+    pub avatar_url: Option<Option<String>>,
     pub resume_url: Option<Option<String>>,
     pub onboarded: Option<bool>,
     pub headline: Option<Option<String>>,
@@ -285,6 +289,7 @@ pub struct UserResponse {
     pub rating: f32,
     pub projects_done: u32,
     pub collaborations: u32,
+    pub avatar_url: Option<String>,
     pub resume_url: Option<String>,
     pub is_admin: bool,
     pub onboarded: bool,
@@ -325,6 +330,7 @@ impl From<User> for UserResponse {
             rating: u.rating,
             projects_done: u.projects_done,
             collaborations: u.collaborations,
+            avatar_url: u.avatar_url,
             resume_url: u.resume_url,
             is_admin: u.is_admin,
             onboarded: u.onboarded,

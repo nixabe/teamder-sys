@@ -194,7 +194,7 @@ async fn complete_onboarding(auth: AuthUser, state: &State<AppState>) -> ApiResu
         name: None, role: None, department: None, year: None, location: None,
         bio: None, skills: None, skill_tags: None, work_mode: None,
         availability: None, hours_per_week: None, languages: None,
-        portfolio: None, resume_url: None,
+        portfolio: None, avatar_url: None, resume_url: None,
         onboarded: Some(true),
         headline: None, notify_email: None, notify_in_app: None, is_public: None,
         social_links: None, interests: None, timezone: None, goals: None,

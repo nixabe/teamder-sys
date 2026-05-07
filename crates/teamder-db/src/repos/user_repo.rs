@@ -158,6 +158,13 @@ impl UserRepo {
             let bson = to_bson(v).map_err(|e| TeamderError::Database(e.to_string()))?;
             update_doc.insert("portfolio", bson);
         }
+        // avatar_url uses double-Option: outer = "should we touch it", inner = value (None → null).
+        if let Some(inner) = &req.avatar_url {
+            match inner {
+                Some(url) => update_doc.insert("avatar_url", url.clone()),
+                None => update_doc.insert("avatar_url", mongodb::bson::Bson::Null),
+            };
+        }
         // resume_url uses double-Option: outer = "should we touch it", inner = value (None → null).
         if let Some(inner) = &req.resume_url {
             match inner {
@@ -208,6 +215,21 @@ impl UserRepo {
         let filter = doc! { "_id": id };
         let update = doc! { "$set": update_doc };
 
+        self.col
+            .update_one(filter, update)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Set just the avatar_url field (used by the uploads route after saving an avatar image).
+    pub async fn set_avatar_url(&self, id: &str, url: Option<String>) -> Result<(), TeamderError> {
+        let value = match url {
+            Some(u) => mongodb::bson::Bson::String(u),
+            None => mongodb::bson::Bson::Null,
+        };
+        let filter = doc! { "_id": id };
+        let update = doc! { "$set": { "avatar_url": value, "updated_at": Utc::now().to_rfc3339() } };
         self.col
             .update_one(filter, update)
             .await

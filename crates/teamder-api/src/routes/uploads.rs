@@ -116,6 +116,21 @@ async fn upload_portfolio(
     })))
 }
 
+#[post("/avatar", data = "<form>")]
+async fn upload_avatar(
+    mut form: Form<FileUpload<'_>>,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let ct = form.file.content_type().map(|c| c.to_string()).unwrap_or_default();
+    if !ct.starts_with("image/") {
+        return Err(TeamderError::Validation("Only image files are accepted for avatars".into()).into());
+    }
+    let (filename, url) = persist(&mut form.file, &auth.0.sub, "avatar").await?;
+    state.users.set_avatar_url(&auth.0.sub, Some(url.clone())).await?;
+    Ok(Json(json!({ "url": url, "filename": filename })))
+}
+
 #[post("/resume", data = "<form>")]
 async fn upload_resume(
     mut form: Form<FileUpload<'_>>,
@@ -147,5 +162,5 @@ async fn delete_upload(path: String, auth: AuthUser) -> ApiResult<Value> {
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![upload_portfolio, upload_resume, delete_upload]
+    routes![upload_avatar, upload_portfolio, upload_resume, delete_upload]
 }
