@@ -210,6 +210,10 @@ impl UserRepo {
                 None => update_doc.insert("goals", mongodb::bson::Bson::Null),
             };
         }
+        if let Some(v) = &req.free_days {
+            let arr: Vec<_> = v.iter().map(|s| mongodb::bson::Bson::String(s.clone())).collect();
+            update_doc.insert("free_days", arr);
+        }
         update_doc.insert("updated_at", Utc::now().to_rfc3339());
 
         let filter = doc! { "_id": id };

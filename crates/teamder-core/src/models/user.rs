@@ -123,6 +123,9 @@ pub struct User {
     /// Long-form personal goals — what the user is hoping to find / build.
     #[serde(default)]
     pub goals: Option<String>,
+    /// Days of the week the user is generally available (e.g. ["Mon","Wed","Fri"]).
+    #[serde(default)]
+    pub free_days: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -184,6 +187,7 @@ impl User {
             interests: vec![],
             timezone: None,
             goals: None,
+            free_days: vec![],
             created_at: now,
             updated_at: now,
         }
@@ -261,6 +265,9 @@ pub struct UpdateUserRequest {
     pub interests: Option<Vec<String>>,
     pub timezone: Option<Option<String>>,
     pub goals: Option<Option<String>>,
+    /// Days of the week the user is generally available.
+    #[serde(default)]
+    pub free_days: Option<Vec<String>>,
 }
 
 /// Response shape returned to API clients (no password hash).
@@ -301,6 +308,7 @@ pub struct UserResponse {
     pub interests: Vec<String>,
     pub timezone: Option<String>,
     pub goals: Option<String>,
+    pub free_days: Vec<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -342,6 +350,7 @@ impl From<User> for UserResponse {
             interests: u.interests,
             timezone: u.timezone,
             goals: u.goals,
+            free_days: u.free_days,
             created_at: u.created_at,
         }
     }
