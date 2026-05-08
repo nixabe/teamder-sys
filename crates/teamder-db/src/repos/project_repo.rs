@@ -170,6 +170,17 @@ impl ProjectRepo {
         Ok(())
     }
 
+    pub async fn remove_member(&self, project_id: &str, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": project_id },
+                doc! { "$pull": { "team": { "user_id": user_id } } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn delete(&self, id: &str) -> Result<(), TeamderError> {
         self.col
             .delete_one(doc! { "_id": id })

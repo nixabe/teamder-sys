@@ -270,6 +270,32 @@ async fn recommend_users(
     Ok(Json(json!({ "data": data, "project_id": project.id, "project_name": project.name })))
 }
 
+/// DELETE /api/v1/projects/<id>/members/<user_id>  (auth + owner or admin)
+#[delete("/<id>/members/<user_id>")]
+async fn remove_member(
+    id: String,
+    user_id: String,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let project = state
+        .projects
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Project {} not found", id)))?;
+
+    if project.lead_user_id != auth.0.sub && !auth.0.is_admin {
+        return Err(TeamderError::Forbidden.into());
+    }
+    // Prevent removing the lead themselves
+    if user_id == project.lead_user_id {
+        return Err(TeamderError::Validation("Cannot remove the project lead".into()).into());
+    }
+
+    state.projects.remove_member(&id, &user_id).await?;
+    Ok(Json(json!({ "success": true })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects, joined_projects, recommend_users]
+    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects, joined_projects, recommend_users, remove_member]
 }
