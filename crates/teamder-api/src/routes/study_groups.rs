@@ -46,15 +46,44 @@ async fn list_groups(
     })))
 }
 
-/// GET /api/v1/study-groups/<id>
+/// GET /api/v1/study-groups/<id>  — returns full detail with enriched members
 #[get("/<id>")]
-async fn get_group(id: String, state: &State<AppState>) -> ApiResult<StudyGroupResponse> {
-    let group = state
+async fn get_group(id: String, state: &State<AppState>) -> ApiResult<Value> {
+    let g = state
         .study_groups
         .find_by_id(&id)
         .await?
         .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
-    Ok(Json(group.into()))
+
+    let mut member_ids: Vec<&str> = std::iter::once(g.created_by.as_str())
+        .chain(g.members.iter().map(|m| m.user_id.as_str()))
+        .collect();
+    member_ids.sort_unstable(); member_ids.dedup();
+    let users = state.users.find_many_by_ids(&member_ids).await?;
+    let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
+
+    let creator_name = names.get(g.created_by.as_str()).copied().unwrap_or("").to_string();
+    let progress = g.progress_percent();
+    let members: Vec<GroupMemberEnriched> = g.members.iter().map(|m| GroupMemberEnriched {
+        user_id: m.user_id.clone(),
+        name: names.get(m.user_id.as_str()).copied().unwrap_or("").to_string(),
+        initials: m.initials.clone(),
+        color: m.color.clone(),
+        joined_at: m.joined_at,
+        streak: m.streak,
+    }).collect();
+
+    let detail = StudyGroupDetail {
+        id: g.id, name: g.name, goal: g.goal, icon: g.icon, icon_bg: g.icon_bg,
+        subject: g.subject, tags: g.tags, members, max_members: g.max_members,
+        schedule: g.schedule, duration_weeks: g.duration_weeks,
+        current_week: g.current_week, progress_percent: progress,
+        is_open: g.is_open, join_mode: g.join_mode,
+        banner_image: g.banner_image, notes: g.notes, description: g.description,
+        created_by: g.created_by, creator_name, created_at: g.created_at,
+    };
+
+    Ok(Json(json!(detail)))
 }
 
 /// POST /api/v1/study-groups  (auth)
@@ -170,46 +199,6 @@ async fn joined_groups(auth: AuthUser, state: &State<AppState>) -> ApiResult<Val
     Ok(Json(json!({ "data": data })))
 }
 
-/// GET /api/v1/study-groups/<id>/detail  (auth — full detail with members)
-#[get("/<id>/detail")]
-async fn group_detail(id: String, state: &State<AppState>) -> ApiResult<Value> {
-    let g = state
-        .study_groups
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
-
-    let mut member_ids: Vec<&str> = std::iter::once(g.created_by.as_str())
-        .chain(g.members.iter().map(|m| m.user_id.as_str()))
-        .collect();
-    member_ids.sort_unstable(); member_ids.dedup();
-    let users = state.users.find_many_by_ids(&member_ids).await?;
-    let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
-
-    let creator_name = names.get(g.created_by.as_str()).copied().unwrap_or("").to_string();
-    let progress = g.progress_percent();
-    let members: Vec<GroupMemberEnriched> = g.members.iter().map(|m| GroupMemberEnriched {
-        user_id: m.user_id.clone(),
-        name: names.get(m.user_id.as_str()).copied().unwrap_or("").to_string(),
-        initials: m.initials.clone(),
-        color: m.color.clone(),
-        joined_at: m.joined_at,
-        streak: m.streak,
-    }).collect();
-
-    let detail = StudyGroupDetail {
-        id: g.id, name: g.name, goal: g.goal, icon: g.icon, icon_bg: g.icon_bg,
-        subject: g.subject, tags: g.tags, members, max_members: g.max_members,
-        schedule: g.schedule, duration_weeks: g.duration_weeks,
-        current_week: g.current_week, progress_percent: progress,
-        is_open: g.is_open, join_mode: g.join_mode,
-        banner_image: g.banner_image, notes: g.notes, description: g.description,
-        created_by: g.created_by, creator_name, created_at: g.created_at,
-    };
-
-    Ok(Json(json!(detail)))
-}
-
 /// GET /api/v1/study-groups/<id>/notes
 #[get("/<id>/notes")]
 async fn list_notes(id: String, state: &State<AppState>) -> ApiResult<Value> {
@@ -302,5 +291,5 @@ async fn leave_group(id: String, auth: AuthUser, state: &State<AppState>) -> Api
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups, group_detail, list_notes, add_note, delete_note, leave_group]
+    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups, list_notes, add_note, delete_note, leave_group]
 }
