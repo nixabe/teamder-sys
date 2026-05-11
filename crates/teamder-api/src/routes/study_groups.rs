@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use teamder_core::{
     error::TeamderError,
-    models::study_group::{CreateStudyGroupRequest, GroupMember, GroupMemberEnriched, StudyGroup, StudyGroupDetail, StudyGroupResponse},
+    models::study_group::{CreateStudyGroupRequest, CreateStudyNoteRequest, GroupMember, GroupMemberEnriched, StudyGroup, StudyGroupDetail, StudyGroupResponse, StudyNote},
 };
 use chrono::Utc;
 
@@ -73,6 +73,8 @@ async fn create_group(
     if let Some(v) = &req.icon { group.icon = v.clone(); }
     if let Some(v) = &req.icon_bg { group.icon_bg = v.clone(); }
     if let Some(v) = req.join_mode.clone() { group.join_mode = v; }
+    if req.banner_image.is_some() { group.banner_image = req.banner_image.clone(); }
+    if req.description.is_some() { group.description = req.description.clone(); }
 
     state.study_groups.create(&group).await?;
     Ok(Json(group.into()))
@@ -160,6 +162,7 @@ async fn joined_groups(auth: AuthUser, state: &State<AppState>) -> ApiResult<Val
             schedule: g.schedule, duration_weeks: g.duration_weeks,
             current_week: g.current_week, progress_percent: progress,
             is_open: g.is_open, join_mode: g.join_mode,
+            banner_image: g.banner_image, notes: g.notes, description: g.description,
             created_by: g.created_by, creator_name, created_at: g.created_at,
         }
     }).collect();
@@ -167,6 +170,137 @@ async fn joined_groups(auth: AuthUser, state: &State<AppState>) -> ApiResult<Val
     Ok(Json(json!({ "data": data })))
 }
 
+/// GET /api/v1/study-groups/<id>/detail  (auth — full detail with members)
+#[get("/<id>/detail")]
+async fn group_detail(id: String, state: &State<AppState>) -> ApiResult<Value> {
+    let g = state
+        .study_groups
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
+
+    let mut member_ids: Vec<&str> = std::iter::once(g.created_by.as_str())
+        .chain(g.members.iter().map(|m| m.user_id.as_str()))
+        .collect();
+    member_ids.sort_unstable(); member_ids.dedup();
+    let users = state.users.find_many_by_ids(&member_ids).await?;
+    let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
+
+    let creator_name = names.get(g.created_by.as_str()).copied().unwrap_or("").to_string();
+    let progress = g.progress_percent();
+    let members: Vec<GroupMemberEnriched> = g.members.iter().map(|m| GroupMemberEnriched {
+        user_id: m.user_id.clone(),
+        name: names.get(m.user_id.as_str()).copied().unwrap_or("").to_string(),
+        initials: m.initials.clone(),
+        color: m.color.clone(),
+        joined_at: m.joined_at,
+        streak: m.streak,
+    }).collect();
+
+    let detail = StudyGroupDetail {
+        id: g.id, name: g.name, goal: g.goal, icon: g.icon, icon_bg: g.icon_bg,
+        subject: g.subject, tags: g.tags, members, max_members: g.max_members,
+        schedule: g.schedule, duration_weeks: g.duration_weeks,
+        current_week: g.current_week, progress_percent: progress,
+        is_open: g.is_open, join_mode: g.join_mode,
+        banner_image: g.banner_image, notes: g.notes, description: g.description,
+        created_by: g.created_by, creator_name, created_at: g.created_at,
+    };
+
+    Ok(Json(json!(detail)))
+}
+
+/// GET /api/v1/study-groups/<id>/notes
+#[get("/<id>/notes")]
+async fn list_notes(id: String, state: &State<AppState>) -> ApiResult<Value> {
+    let g = state
+        .study_groups
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
+    Ok(Json(json!({ "data": g.notes })))
+}
+
+/// POST /api/v1/study-groups/<id>/notes  (auth — member or creator)
+#[post("/<id>/notes", data = "<req>")]
+async fn add_note(
+    id: String,
+    req: Json<CreateStudyNoteRequest>,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let g = state
+        .study_groups
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
+
+    let is_member = g.created_by == auth.0.sub || g.members.iter().any(|m| m.user_id == auth.0.sub);
+    if !is_member {
+        return Err(TeamderError::Forbidden.into());
+    }
+
+    let user = state.users.find_by_id(&auth.0.sub).await?
+        .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+
+    let note = StudyNote {
+        id: uuid::Uuid::new_v4().to_string(),
+        author_id: auth.0.sub.clone(),
+        author_name: user.name.clone(),
+        title: req.title.clone(),
+        body: req.body.clone(),
+        created_at: Utc::now(),
+    };
+
+    state.study_groups.add_note(&id, &note).await?;
+
+    Ok(Json(json!({ "success": true, "note": note })))
+}
+
+/// DELETE /api/v1/study-groups/<group_id>/notes/<note_id>  (auth — author or creator)
+#[delete("/<group_id>/notes/<note_id>")]
+async fn delete_note(
+    group_id: String,
+    note_id: String,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let g = state
+        .study_groups
+        .find_by_id(&group_id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", group_id)))?;
+
+    let note = g.notes.iter().find(|n| n.id == note_id)
+        .ok_or_else(|| TeamderError::NotFound("Note not found".into()))?;
+
+    if note.author_id != auth.0.sub && g.created_by != auth.0.sub {
+        return Err(TeamderError::Forbidden.into());
+    }
+
+    state.study_groups.remove_note(&group_id, &note_id).await?;
+
+    Ok(Json(json!({ "success": true })))
+}
+
+/// POST /api/v1/study-groups/<id>/leave  (auth)
+#[post("/<id>/leave")]
+async fn leave_group(id: String, auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
+    let g = state
+        .study_groups
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
+
+    if g.created_by == auth.0.sub {
+        return Err(TeamderError::Conflict("Creator cannot leave the group".into()).into());
+    }
+
+    state.study_groups.remove_member(&id, &auth.0.sub).await?;
+
+    Ok(Json(json!({ "success": true })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups]
+    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups, group_detail, list_notes, add_note, delete_note, leave_group]
 }

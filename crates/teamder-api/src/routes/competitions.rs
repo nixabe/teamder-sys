@@ -67,6 +67,7 @@ async fn create_competition(
     comp.is_featured = req.is_featured.unwrap_or(false);
     if let Some(v) = &req.icon { comp.icon = v.clone(); }
     if let Some(v) = &req.icon_bg { comp.icon_bg = v.clone(); }
+    if req.banner_image.is_some() { comp.banner_image = req.banner_image.clone(); }
 
     state.competitions.create(&comp).await?;
     Ok(Json(comp.into()))

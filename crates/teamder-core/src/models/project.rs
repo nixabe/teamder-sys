@@ -79,6 +79,8 @@ pub struct Project {
     /// Paid/admin-promoted flag — surfaces this project at the top of listings.
     #[serde(default)]
     pub is_promoted: bool,
+    #[serde(default)]
+    pub banner_image: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -111,6 +113,7 @@ impl Project {
             is_public: true,
             join_mode: JoinMode::Direct,
             is_promoted: false,
+            banner_image: None,
             created_at: now,
             updated_at: now,
         }
@@ -132,6 +135,7 @@ pub struct CreateProjectRequest {
     pub icon: Option<String>,
     pub icon_bg: Option<String>,
     pub join_mode: Option<JoinMode>,
+    pub banner_image: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -147,6 +151,7 @@ pub struct UpdateProjectRequest {
     pub duration: Option<String>,
     pub is_public: Option<bool>,
     pub join_mode: Option<JoinMode>,
+    pub banner_image: Option<String>,
 }
 
 /// Full project detail with enriched member names, used for joined/managed views.
@@ -171,6 +176,7 @@ pub struct ProjectDetail {
     pub is_public: bool,
     pub join_mode: JoinMode,
     pub is_promoted: bool,
+    pub banner_image: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -195,6 +201,7 @@ pub struct ProjectResponse {
     pub is_public: bool,
     pub join_mode: JoinMode,
     pub is_promoted: bool,
+    pub banner_image: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -220,6 +227,7 @@ impl ProjectResponse {
             is_public: p.is_public,
             join_mode: p.join_mode,
             is_promoted: p.is_promoted,
+            banner_image: p.banner_image,
             created_at: p.created_at,
         }
     }

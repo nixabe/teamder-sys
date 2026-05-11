@@ -37,6 +37,8 @@ pub struct Competition {
     pub tags: Vec<String>,
     pub description: String,
     pub is_featured: bool,
+    #[serde(default)]
+    pub banner_image: Option<String>,
     pub registrations: Vec<Registration>,
     /// User IDs who clicked "I'm interested" — used for the interest counter
     /// and to recommend the competition to similar users.
@@ -71,6 +73,7 @@ impl Competition {
             tags: vec![],
             description: description.into(),
             is_featured: false,
+            banner_image: None,
             registrations: vec![],
             interested_user_ids: vec![],
             winners: vec![],
@@ -94,6 +97,7 @@ pub struct CreateCompetitionRequest {
     pub is_featured: Option<bool>,
     pub icon: Option<String>,
     pub icon_bg: Option<String>,
+    pub banner_image: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -117,6 +121,7 @@ pub struct CompetitionResponse {
     pub tags: Vec<String>,
     pub description: String,
     pub is_featured: bool,
+    pub banner_image: Option<String>,
     pub registration_count: usize,
     pub interested_count: usize,
     pub winners: Vec<String>,
@@ -142,6 +147,7 @@ impl From<Competition> for CompetitionResponse {
             tags: c.tags,
             description: c.description,
             is_featured: c.is_featured,
+            banner_image: c.banner_image,
             registration_count: count,
             interested_count: interested,
             winners: c.winners,

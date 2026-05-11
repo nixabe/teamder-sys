@@ -7,6 +7,16 @@ pub use crate::models::project::JoinMode;
 fn default_join_mode() -> JoinMode { JoinMode::Direct }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StudyNote {
+    pub id: String,
+    pub author_id: String,
+    pub author_name: String,
+    pub title: String,
+    pub body: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupMember {
     pub user_id: String,
     pub initials: String,
@@ -35,6 +45,12 @@ pub struct StudyGroup {
     pub is_open: bool,
     #[serde(default = "default_join_mode")]
     pub join_mode: JoinMode,
+    #[serde(default)]
+    pub banner_image: Option<String>,
+    #[serde(default)]
+    pub notes: Vec<StudyNote>,
+    #[serde(default)]
+    pub description: Option<String>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -62,6 +78,9 @@ impl StudyGroup {
             current_week: 1,
             is_open: true,
             join_mode: JoinMode::Direct,
+            banner_image: None,
+            notes: vec![],
+            description: None,
             created_by: created_by.into(),
             created_at: now,
             updated_at: now,
@@ -88,6 +107,14 @@ pub struct CreateStudyGroupRequest {
     pub icon: Option<String>,
     pub icon_bg: Option<String>,
     pub join_mode: Option<JoinMode>,
+    pub banner_image: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateStudyNoteRequest {
+    pub title: String,
+    pub body: String,
 }
 
 /// A member entry enriched with the user's name (resolved at API layer).
@@ -119,6 +146,9 @@ pub struct StudyGroupDetail {
     pub progress_percent: u8,
     pub is_open: bool,
     pub join_mode: JoinMode,
+    pub banner_image: Option<String>,
+    pub notes: Vec<StudyNote>,
+    pub description: Option<String>,
     pub created_by: String,
     pub creator_name: String,
     pub created_at: DateTime<Utc>,
@@ -141,6 +171,9 @@ pub struct StudyGroupResponse {
     pub progress_percent: u8,
     pub is_open: bool,
     pub join_mode: JoinMode,
+    pub banner_image: Option<String>,
+    pub description: Option<String>,
+    pub created_by: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -164,6 +197,9 @@ impl From<StudyGroup> for StudyGroupResponse {
             progress_percent: progress,
             is_open: g.is_open,
             join_mode: g.join_mode,
+            banner_image: g.banner_image,
+            description: g.description,
+            created_by: g.created_by,
             created_at: g.created_at,
         }
     }

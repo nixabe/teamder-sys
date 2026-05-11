@@ -98,6 +98,7 @@ async fn create_project(
     if let Some(v) = &req.icon { project.icon = v.clone(); }
     if let Some(v) = &req.icon_bg { project.icon_bg = v.clone(); }
     if let Some(v) = req.join_mode.clone() { project.join_mode = v; }
+    if req.banner_image.is_some() { project.banner_image = req.banner_image.clone(); }
 
     state.projects.create(&project).await?;
 
@@ -176,7 +177,7 @@ async fn my_projects(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value
             description: p.description, goals: p.goals, roles: p.roles,
             skills: p.skills, team, deadline: p.deadline, collab: p.collab,
             duration: p.duration, category: p.category, is_public: p.is_public,
-            join_mode: p.join_mode, is_promoted: p.is_promoted, created_at: p.created_at,
+            join_mode: p.join_mode, is_promoted: p.is_promoted, banner_image: p.banner_image, created_at: p.created_at,
         }
     }).collect();
 
@@ -213,7 +214,7 @@ async fn joined_projects(auth: AuthUser, state: &State<AppState>) -> ApiResult<V
             description: p.description, goals: p.goals, roles: p.roles,
             skills: p.skills, team, deadline: p.deadline, collab: p.collab,
             duration: p.duration, category: p.category, is_public: p.is_public,
-            join_mode: p.join_mode, is_promoted: p.is_promoted, created_at: p.created_at,
+            join_mode: p.join_mode, is_promoted: p.is_promoted, banner_image: p.banner_image, created_at: p.created_at,
         }
     }).collect();
 

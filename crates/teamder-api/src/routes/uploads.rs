@@ -145,6 +145,24 @@ async fn upload_resume(
     Ok(Json(json!({ "url": url, "filename": filename })))
 }
 
+#[post("/banner", data = "<form>")]
+async fn upload_banner(
+    mut form: Form<FileUpload<'_>>,
+    auth: AuthUser,
+) -> ApiResult<Value> {
+    let (filename, url) = persist(&mut form.file, &auth.0.sub, "banners").await?;
+    Ok(Json(json!({ "url": url, "filename": filename })))
+}
+
+#[post("/application", data = "<form>")]
+async fn upload_application_image(
+    mut form: Form<FileUpload<'_>>,
+    auth: AuthUser,
+) -> ApiResult<Value> {
+    let (filename, url) = persist(&mut form.file, &auth.0.sub, "applications").await?;
+    Ok(Json(json!({ "url": url, "filename": filename })))
+}
+
 #[delete("/?<path>")]
 async fn delete_upload(path: String, auth: AuthUser) -> ApiResult<Value> {
     let prefix = format!("/uploads/{}/", auth.0.sub);
@@ -162,5 +180,5 @@ async fn delete_upload(path: String, auth: AuthUser) -> ApiResult<Value> {
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![upload_avatar, upload_portfolio, upload_resume, delete_upload]
+    routes![upload_avatar, upload_portfolio, upload_resume, upload_banner, upload_application_image, delete_upload]
 }

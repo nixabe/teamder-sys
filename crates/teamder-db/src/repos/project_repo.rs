@@ -148,6 +148,9 @@ impl ProjectRepo {
                 .map_err(|e| TeamderError::Internal(e.to_string()))?;
             update_doc.insert("join_mode", bson);
         }
+        if let Some(v) = &req.banner_image {
+            update_doc.insert("banner_image", v.clone());
+        }
         update_doc.insert("updated_at", Utc::now().to_rfc3339());
 
         self.col

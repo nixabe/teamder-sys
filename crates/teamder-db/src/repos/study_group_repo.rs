@@ -92,6 +92,53 @@ impl StudyGroupRepo {
         Ok(())
     }
 
+    pub async fn add_note(
+        &self,
+        group_id: &str,
+        note: &teamder_core::models::study_group::StudyNote,
+    ) -> Result<(), TeamderError> {
+        let note_bson = mongodb::bson::to_bson(note)
+            .map_err(|e| TeamderError::Internal(e.to_string()))?;
+        self.col
+            .update_one(
+                doc! { "_id": group_id },
+                doc! { "$push": { "notes": note_bson } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn remove_note(
+        &self,
+        group_id: &str,
+        note_id: &str,
+    ) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": group_id },
+                doc! { "$pull": { "notes": { "id": note_id } } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn remove_member(
+        &self,
+        group_id: &str,
+        user_id: &str,
+    ) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": group_id },
+                doc! { "$pull": { "members": { "user_id": user_id } } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn count(&self) -> Result<u64, TeamderError> {
         self.col.count_documents(doc! {}).await
             .map_err(|e| TeamderError::Database(e.to_string()))
