@@ -1,9 +1,11 @@
 use rocket::{Route, State, serde::json::Json};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use serde::Deserialize;
 use teamder_core::{
     error::TeamderError,
-    models::study_group::{CreateStudyGroupRequest, CreateStudyNoteRequest, GroupMember, GroupMemberEnriched, StudyGroup, StudyGroupDetail, StudyGroupResponse, StudyNote},
+    models::notification::{Notification, NotificationKind},
+    models::study_group::{CreateStudyGroupRequest, CreateStudyNoteRequest, GroupMember, GroupMemberEnriched, StudyGroup, StudyGroupDetail, StudyGroupResponse, StudyGroupStatus, StudyNote},
 };
 use chrono::Utc;
 
@@ -78,7 +80,7 @@ async fn get_group(id: String, state: &State<AppState>) -> ApiResult<Value> {
         subject: g.subject, tags: g.tags, members, max_members: g.max_members,
         schedule: g.schedule, duration_weeks: g.duration_weeks,
         current_week: g.current_week, progress_percent: progress,
-        is_open: g.is_open, join_mode: g.join_mode,
+        is_open: g.is_open, status: g.status, join_mode: g.join_mode,
         banner_image: g.banner_image, notes: g.notes, description: g.description,
         created_by: g.created_by, creator_name, created_at: g.created_at,
     };
@@ -190,7 +192,7 @@ async fn joined_groups(auth: AuthUser, state: &State<AppState>) -> ApiResult<Val
             subject: g.subject, tags: g.tags, members, max_members: g.max_members,
             schedule: g.schedule, duration_weeks: g.duration_weeks,
             current_week: g.current_week, progress_percent: progress,
-            is_open: g.is_open, join_mode: g.join_mode,
+            is_open: g.is_open, status: g.status, join_mode: g.join_mode,
             banner_image: g.banner_image, notes: g.notes, description: g.description,
             created_by: g.created_by, creator_name, created_at: g.created_at,
         }
@@ -290,6 +292,81 @@ async fn leave_group(id: String, auth: AuthUser, state: &State<AppState>) -> Api
     Ok(Json(json!({ "success": true })))
 }
 
+#[derive(Debug, Deserialize)]
+struct UpdateProgressRequest {
+    current_week: u8,
+}
+
+/// POST /api/v1/study-groups/<id>/progress  (auth — creator only)
+#[post("/<id>/progress", data = "<req>")]
+async fn update_progress(
+    id: String,
+    req: Json<UpdateProgressRequest>,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let group = state
+        .study_groups
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
+
+    if group.created_by != auth.0.sub {
+        return Err(TeamderError::Forbidden.into());
+    }
+    if group.status == StudyGroupStatus::Completed {
+        return Err(TeamderError::Conflict("Study group is already completed".into()).into());
+    }
+    if req.current_week > group.duration_weeks {
+        return Err(TeamderError::Validation("current_week cannot exceed duration_weeks".into()).into());
+    }
+
+    state.study_groups.update_progress(&id, req.current_week).await?;
+
+    Ok(Json(json!({ "success": true, "current_week": req.current_week })))
+}
+
+/// POST /api/v1/study-groups/<id>/complete  (auth — creator only)
+#[post("/<id>/complete")]
+async fn complete_group(
+    id: String,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let group = state
+        .study_groups
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
+
+    if group.created_by != auth.0.sub {
+        return Err(TeamderError::Forbidden.into());
+    }
+    if group.status == StudyGroupStatus::Completed {
+        return Err(TeamderError::Conflict("Study group is already completed".into()).into());
+    }
+
+    state.study_groups.set_status(&id, "completed").await?;
+
+    let creator_name = state.users.find_by_id(&auth.0.sub).await?
+        .map(|u| u.name).unwrap_or_default();
+
+    for member in &group.members {
+        let n = Notification::new(
+            &member.user_id,
+            NotificationKind::System,
+            format!("{} is completed!", group.name),
+            format!("{} marked \"{}\" as completed. You can now leave reviews for your groupmates.", creator_name, group.name),
+            Some(format!("/study-groups/{}", group.id)),
+        );
+        if let Err(e) = state.notifications.create(&n).await {
+            tracing::warn!("failed to create completion notification: {e}");
+        }
+    }
+
+    Ok(Json(json!({ "success": true })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups, list_notes, add_note, delete_note, leave_group]
+    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups, list_notes, add_note, delete_note, leave_group, update_progress, complete_group]
 }

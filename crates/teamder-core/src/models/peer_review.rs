@@ -44,10 +44,11 @@ pub struct PeerReview {
     pub reviewer_name: String,
     pub reviewee_id: String,
     pub project_id: Option<String>,
+    #[serde(default)]
+    pub study_group_id: Option<String>,
     pub project_name: String,
     pub scores: ReviewScores,
     pub body: String,
-    /// Optional skill tags the reviewer is endorsing for the reviewee.
     #[serde(default)]
     pub endorsed_skills: Vec<String>,
     pub created_at: DateTime<Utc>,
@@ -59,6 +60,7 @@ impl PeerReview {
         reviewer_name: impl Into<String>,
         reviewee_id: impl Into<String>,
         project_id: Option<String>,
+        study_group_id: Option<String>,
         project_name: impl Into<String>,
         scores: ReviewScores,
         body: impl Into<String>,
@@ -70,6 +72,7 @@ impl PeerReview {
             reviewer_name: reviewer_name.into(),
             reviewee_id: reviewee_id.into(),
             project_id,
+            study_group_id,
             project_name: project_name.into(),
             scores,
             body: body.into(),
@@ -83,6 +86,8 @@ impl PeerReview {
 pub struct CreatePeerReviewRequest {
     pub reviewee_id: String,
     pub project_id: Option<String>,
+    #[serde(default)]
+    pub study_group_id: Option<String>,
     pub project_name: String,
     pub scores: ReviewScores,
     pub body: String,
@@ -97,6 +102,7 @@ pub struct PeerReviewResponse {
     pub reviewer_name: String,
     pub reviewee_id: String,
     pub project_id: Option<String>,
+    pub study_group_id: Option<String>,
     pub project_name: String,
     pub scores: ReviewScores,
     pub average: f32,
@@ -114,6 +120,7 @@ impl From<PeerReview> for PeerReviewResponse {
             reviewer_name: r.reviewer_name,
             reviewee_id: r.reviewee_id,
             project_id: r.project_id,
+            study_group_id: r.study_group_id,
             project_name: r.project_name,
             scores: r.scores,
             average: avg,
@@ -145,7 +152,7 @@ mod tests {
     #[test]
     fn new_review_has_uuid() {
         let s = ReviewScores { skill: 5, communication: 5, reliability: 5, teamwork: 5 };
-        let r = PeerReview::new("u1", "Alice", "u2", None, "Proj", s, "great", vec![]);
+        let r = PeerReview::new("u1", "Alice", "u2", None, None, "Proj", s, "great", vec![]);
         assert_eq!(r.id.len(), 36);
         assert_eq!(r.reviewer_id, "u1");
         assert_eq!(r.reviewee_id, "u2");

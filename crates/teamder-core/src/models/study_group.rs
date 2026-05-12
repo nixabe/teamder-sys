@@ -4,7 +4,15 @@ use uuid::Uuid;
 
 pub use crate::models::project::JoinMode;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum StudyGroupStatus {
+    Active,
+    Completed,
+}
+
 fn default_join_mode() -> JoinMode { JoinMode::Direct }
+fn default_status() -> StudyGroupStatus { StudyGroupStatus::Active }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StudyNote {
@@ -43,6 +51,8 @@ pub struct StudyGroup {
     pub duration_weeks: u8,
     pub current_week: u8,
     pub is_open: bool,
+    #[serde(default = "default_status")]
+    pub status: StudyGroupStatus,
     #[serde(default = "default_join_mode")]
     pub join_mode: JoinMode,
     #[serde(default)]
@@ -77,6 +87,7 @@ impl StudyGroup {
             duration_weeks: 8,
             current_week: 1,
             is_open: true,
+            status: StudyGroupStatus::Active,
             join_mode: JoinMode::Direct,
             banner_image: None,
             notes: vec![],
@@ -145,6 +156,7 @@ pub struct StudyGroupDetail {
     pub current_week: u8,
     pub progress_percent: u8,
     pub is_open: bool,
+    pub status: StudyGroupStatus,
     pub join_mode: JoinMode,
     pub banner_image: Option<String>,
     pub notes: Vec<StudyNote>,
@@ -170,6 +182,7 @@ pub struct StudyGroupResponse {
     pub current_week: u8,
     pub progress_percent: u8,
     pub is_open: bool,
+    pub status: StudyGroupStatus,
     pub join_mode: JoinMode,
     pub banner_image: Option<String>,
     pub description: Option<String>,
@@ -196,6 +209,7 @@ impl From<StudyGroup> for StudyGroupResponse {
             current_week: g.current_week,
             progress_percent: progress,
             is_open: g.is_open,
+            status: g.status,
             join_mode: g.join_mode,
             banner_image: g.banner_image,
             description: g.description,

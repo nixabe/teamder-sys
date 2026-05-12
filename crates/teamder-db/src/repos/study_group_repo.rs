@@ -139,6 +139,39 @@ impl StudyGroupRepo {
         Ok(())
     }
 
+    pub async fn set_status(
+        &self,
+        group_id: &str,
+        status: &str,
+    ) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": group_id },
+                doc! { "$set": { "status": status, "updated_at": chrono::Utc::now().to_rfc3339() } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn update_progress(
+        &self,
+        group_id: &str,
+        current_week: u8,
+    ) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": group_id },
+                doc! { "$set": {
+                    "current_week": current_week as i32,
+                    "updated_at": chrono::Utc::now().to_rfc3339(),
+                } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn count(&self) -> Result<u64, TeamderError> {
         self.col.count_documents(doc! {}).await
             .map_err(|e| TeamderError::Database(e.to_string()))

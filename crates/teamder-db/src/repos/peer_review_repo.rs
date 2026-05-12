@@ -66,12 +66,13 @@ impl PeerReviewRepo {
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
-    /// Returns true if reviewer has already reviewed reviewee on this project.
+    /// Returns true if reviewer has already reviewed reviewee on this project/study group.
     pub async fn exists_pair(
         &self,
         reviewer_id: &str,
         reviewee_id: &str,
         project_id: Option<&str>,
+        study_group_id: Option<&str>,
     ) -> Result<bool, TeamderError> {
         let mut filter = doc! {
             "reviewer_id": reviewer_id,
@@ -81,6 +82,9 @@ impl PeerReviewRepo {
             filter.insert("project_id", pid);
         } else {
             filter.insert("project_id", mongodb::bson::Bson::Null);
+        }
+        if let Some(gid) = study_group_id {
+            filter.insert("study_group_id", gid);
         }
         let found = self
             .col

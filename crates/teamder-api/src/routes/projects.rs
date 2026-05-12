@@ -3,7 +3,8 @@ use rocket::{Route, State, serde::json::Json};
 use serde_json::{Value, json};
 use teamder_core::{
     error::TeamderError,
-    models::project::{CreateProjectRequest, Project, ProjectDetail, ProjectResponse, TeamMemberEnriched, UpdateProjectRequest},
+    models::notification::{Notification, NotificationKind},
+    models::project::{CreateProjectRequest, Project, ProjectDetail, ProjectResponse, ProjectStatus, TeamMemberEnriched, UpdateProjectRequest},
     models::user::UserResponse,
     skills::compute_project_match_score,
 };
@@ -297,6 +298,55 @@ async fn remove_member(
     Ok(Json(json!({ "success": true })))
 }
 
+/// POST /api/v1/projects/<id>/complete  (auth + owner or admin)
+#[post("/<id>/complete")]
+async fn complete_project(
+    id: String,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let project = state
+        .projects
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Project {} not found", id)))?;
+
+    if project.lead_user_id != auth.0.sub && !auth.0.is_admin {
+        return Err(TeamderError::Forbidden.into());
+    }
+
+    if project.status == ProjectStatus::Completed {
+        return Err(TeamderError::Conflict("Project is already completed".into()).into());
+    }
+
+    let update = UpdateProjectRequest {
+        name: None, description: None, goals: None,
+        status: Some(ProjectStatus::Completed),
+        roles: None, skills: None, deadline: None,
+        collab: None, duration: None, is_public: None,
+        join_mode: None, banner_image: None,
+    };
+    state.projects.update(&id, &update).await?;
+
+    let lead_name = state.users.find_by_id(&project.lead_user_id).await?
+        .map(|u| u.name).unwrap_or_default();
+
+    for member in &project.team {
+        let n = Notification::new(
+            &member.user_id,
+            NotificationKind::System,
+            format!("{} is completed!", project.name),
+            format!("{} marked \"{}\" as completed. You can now leave reviews for your teammates.", lead_name, project.name),
+            Some(format!("/projects/{}", project.id)),
+        );
+        if let Err(e) = state.notifications.create(&n).await {
+            tracing::warn!("failed to create completion notification: {e}");
+        }
+    }
+
+    Ok(Json(json!({ "success": true })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects, joined_projects, recommend_users, remove_member]
+    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects, joined_projects, recommend_users, remove_member, complete_project]
 }

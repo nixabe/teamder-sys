@@ -5,6 +5,8 @@ use teamder_core::{
     models::{
         notification::{Notification, NotificationKind},
         peer_review::{CreatePeerReviewRequest, PeerReview, PeerReviewResponse},
+        project::ProjectStatus,
+        study_group::StudyGroupStatus,
         user::Review,
     },
     skills::filter_valid_skills,
@@ -41,13 +43,20 @@ async fn create_review(
         .await?
         .ok_or_else(|| TeamderError::NotFound("Reviewee not found".into()))?;
 
-    // If a project is referenced, ensure both parties were on it.
+    if req.project_id.is_none() && req.study_group_id.is_none() {
+        return Err(TeamderError::Validation("Either project_id or study_group_id is required".into()).into());
+    }
+
+    // If a project is referenced, ensure both parties were on it and it's completed.
     if let Some(pid) = &req.project_id {
         let project = state
             .projects
             .find_by_id(pid)
             .await?
             .ok_or_else(|| TeamderError::NotFound("Project not found".into()))?;
+        if project.status != ProjectStatus::Completed {
+            return Err(TeamderError::Validation("Reviews can only be submitted after the project is completed".into()).into());
+        }
         let on_project = |uid: &str| {
             project.lead_user_id == uid || project.team.iter().any(|m| m.user_id == uid)
         };
@@ -56,10 +65,28 @@ async fn create_review(
         }
     }
 
+    // If a study group is referenced, ensure both parties were in it and it's completed.
+    if let Some(gid) = &req.study_group_id {
+        let group = state
+            .study_groups
+            .find_by_id(gid)
+            .await?
+            .ok_or_else(|| TeamderError::NotFound("Study group not found".into()))?;
+        if group.status != StudyGroupStatus::Completed {
+            return Err(TeamderError::Validation("Reviews can only be submitted after the study group is completed".into()).into());
+        }
+        let in_group = |uid: &str| {
+            group.created_by == uid || group.members.iter().any(|m| m.user_id == uid)
+        };
+        if !in_group(&reviewer_id) || !in_group(&req.reviewee_id) {
+            return Err(TeamderError::Forbidden.into());
+        }
+    }
+
     // Prevent duplicate reviews for the same pair + project.
     let exists = state
         .peer_reviews
-        .exists_pair(&reviewer_id, &req.reviewee_id, req.project_id.as_deref())
+        .exists_pair(&reviewer_id, &req.reviewee_id, req.project_id.as_deref(), req.study_group_id.as_deref())
         .await?;
     if exists {
         return Err(TeamderError::Conflict("You already reviewed this collaborator for this project".into()).into());
@@ -80,6 +107,7 @@ async fn create_review(
         reviewer.name.clone(),
         req.0.reviewee_id.clone(),
         req.0.project_id.clone(),
+        req.0.study_group_id.clone(),
         req.0.project_name.clone(),
         scores,
         body,
