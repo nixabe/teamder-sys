@@ -47,7 +47,11 @@ pub async fn build_rocket(db_client: DbClient, jwt_secret: String) -> rocket::Ro
         .mount("/uploads", FileServer::from("uploads").rank(10))
         .mount("/api/v1/auth", routes::auth::routes())
         .mount("/api/v1/users", routes::users::routes())
-        .mount("/api/v1/projects", routes::projects::routes())
+        .mount("/api/v1/projects", {
+            let mut r = routes::projects::routes();
+            r.extend(routes::project_updates::routes());
+            r
+        })
         .mount("/api/v1/competitions", routes::competitions::routes())
         .mount("/api/v1/study-groups", routes::study_groups::routes())
         .mount("/api/v1/invites", routes::invites::routes())
@@ -62,10 +66,6 @@ pub async fn build_rocket(db_client: DbClient, jwt_secret: String) -> rocket::Ro
         .mount("/api/v1/competition-teams", routes::competition_teams::routes())
         .mount("/api/v1/bookmarks", routes::bookmarks::routes())
         .mount("/api/v1/search", routes::search::routes())
-        // Project updates live under /projects/<id>/updates so we mount on the
-        // same prefix used by projects::routes — Rocket is fine with multiple
-        // mounts on the same path.
-        .mount("/api/v1/projects", routes::project_updates::routes())
 }
 
 #[get("/")]
