@@ -303,6 +303,34 @@ async fn remove_member(
     Ok(Json(json!({ "success": true })))
 }
 
+/// PATCH /api/v1/projects/<id>/members/<user_id>/role  (auth + owner or admin)
+#[derive(serde::Deserialize)]
+struct SetMemberRoleBody {
+    role: Option<String>,
+}
+
+#[patch("/<id>/members/<user_id>/role", data = "<body>")]
+async fn set_member_role(
+    id: String,
+    user_id: String,
+    body: Json<SetMemberRoleBody>,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let project = state
+        .projects
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Project {} not found", id)))?;
+
+    if project.lead_user_id != auth.0.sub && !auth.0.is_admin {
+        return Err(TeamderError::Forbidden.into());
+    }
+
+    state.projects.set_member_role(&id, &user_id, body.role.as_deref()).await?;
+    Ok(Json(json!({ "success": true })))
+}
+
 /// POST /api/v1/projects/<id>/complete  (auth + owner or admin)
 #[post("/<id>/complete")]
 async fn complete_project(
@@ -353,5 +381,5 @@ async fn complete_project(
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects, joined_projects, recommend_users, remove_member, complete_project]
+    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects, joined_projects, recommend_users, remove_member, set_member_role, complete_project]
 }

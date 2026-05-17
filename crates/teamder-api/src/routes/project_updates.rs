@@ -59,6 +59,7 @@ async fn create_update(
         initials: String::new(),
         color: String::new(),
         joined_at: project.created_at,
+        role: None,
     })) {
         if member.user_id == user.id { continue; }
         let n = Notification::new(

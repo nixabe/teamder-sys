@@ -72,8 +72,12 @@ async fn create_request(
                         initials: user.initials,
                         color: user.gradient,
                         joined_at: Utc::now(),
+                        role: body.role_wanted.clone(),
                     };
                     state.projects.add_member(&body.entity_id, &member).await?;
+                    if let Some(role_name) = &body.role_wanted {
+                        let _ = state.projects.increment_role_filled(&body.entity_id, role_name, 1).await;
+                    }
                     Ok(Json(json!({ "joined": true, "mode": "direct" })))
                 }
                 JoinMode::Approval => {
@@ -258,8 +262,12 @@ async fn respond(
                     initials: user.initials,
                     color: user.gradient,
                     joined_at: Utc::now(),
+                    role: req.role_wanted.clone(),
                 };
                 state.projects.add_member(&req.entity_id, &member).await?;
+                if let Some(role_name) = &req.role_wanted {
+                    let _ = state.projects.increment_role_filled(&req.entity_id, role_name, 1).await;
+                }
             }
             "study_group" => {
                 let member = GroupMember {

@@ -187,6 +187,53 @@ impl ProjectRepo {
         Ok(())
     }
 
+    pub async fn increment_role_filled(&self, project_id: &str, role_name: &str, delta: i32) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": project_id, "roles.name": role_name },
+                doc! { "$inc": { "roles.$.filled": delta } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Assign (or unassign) a member to a named role.
+    /// Automatically keeps `roles.$.filled` in sync.
+    pub async fn set_member_role(&self, project_id: &str, user_id: &str, new_role: Option<&str>) -> Result<(), TeamderError> {
+        let project = self.find_by_id(project_id).await?
+            .ok_or_else(|| TeamderError::NotFound(format!("Project {} not found", project_id)))?;
+
+        let old_role = project.team.iter()
+            .find(|m| m.user_id == user_id)
+            .and_then(|m| m.role.as_deref());
+
+        if let Some(old) = old_role {
+            let _ = self.col.update_one(
+                doc! { "_id": project_id, "roles.name": old },
+                doc! { "$inc": { "roles.$.filled": -1_i32 } },
+            ).await;
+        }
+
+        if let Some(new) = new_role {
+            let _ = self.col.update_one(
+                doc! { "_id": project_id, "roles.name": new },
+                doc! { "$inc": { "roles.$.filled": 1_i32 } },
+            ).await;
+            self.col.update_one(
+                doc! { "_id": project_id, "team.user_id": user_id },
+                doc! { "$set": { "team.$.role": new } },
+            ).await.map_err(|e| TeamderError::Database(e.to_string()))?;
+        } else {
+            self.col.update_one(
+                doc! { "_id": project_id, "team.user_id": user_id },
+                doc! { "$unset": { "team.$.role": "" } },
+            ).await.map_err(|e| TeamderError::Database(e.to_string()))?;
+        }
+
+        Ok(())
+    }
+
     pub async fn remove_member(&self, project_id: &str, user_id: &str) -> Result<(), TeamderError> {
         self.col
             .update_one(

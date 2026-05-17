@@ -42,6 +42,8 @@ pub struct TeamMember {
     pub initials: String,
     pub color: String,
     pub joined_at: DateTime<Utc>,
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 /// TeamMember enriched with the user's resolved name.
