@@ -12,6 +12,7 @@ pub struct Claims {
     /// Is admin
     pub is_admin: bool,
     /// Is competition publisher
+    #[serde(default)]
     pub is_publisher: bool,
     /// Issued at (unix timestamp)
     pub iat: i64,
