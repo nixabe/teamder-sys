@@ -1,6 +1,7 @@
+use chrono::Utc;
 use futures_util::TryStreamExt;
 use mongodb::{Collection, bson::doc};
-use teamder_core::{error::TeamderError, models::competition::Competition};
+use teamder_core::{error::TeamderError, models::competition::{Competition, PublishStatus}};
 use crate::DbClient;
 
 pub struct CompetitionRepo {
@@ -26,17 +27,69 @@ impl CompetitionRepo {
     pub async fn list(&self) -> Result<Vec<Competition>, TeamderError> {
         use mongodb::options::FindOptions;
         let opts = FindOptions::builder().sort(doc! { "created_at": -1 }).build();
-        let cursor = self.col.find(doc! {}).with_options(opts).await
+        let cursor = self.col.find(doc! { "publish_status": "published" }).with_options(opts).await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         cursor.try_collect().await
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
     pub async fn list_featured(&self) -> Result<Vec<Competition>, TeamderError> {
-        let cursor = self.col.find(doc! { "is_featured": true }).await
+        let cursor = self.col.find(doc! { "is_featured": true, "publish_status": "published" }).await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         cursor.try_collect().await
             .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    pub async fn list_all(&self) -> Result<Vec<Competition>, TeamderError> {
+        use mongodb::options::FindOptions;
+        let opts = FindOptions::builder().sort(doc! { "created_at": -1 }).build();
+        let cursor = self.col.find(doc! {}).with_options(opts).await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor.try_collect().await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    pub async fn list_by_publisher(&self, publisher_id: &str) -> Result<Vec<Competition>, TeamderError> {
+        use mongodb::options::FindOptions;
+        let opts = FindOptions::builder().sort(doc! { "created_at": -1 }).build();
+        let cursor = self.col.find(doc! { "publisher_id": publisher_id }).with_options(opts).await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor.try_collect().await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    pub async fn list_pending(&self) -> Result<Vec<Competition>, TeamderError> {
+        use mongodb::options::FindOptions;
+        let opts = FindOptions::builder().sort(doc! { "created_at": -1 }).build();
+        let cursor = self.col.find(doc! { "publish_status": "pending_review" }).with_options(opts).await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor.try_collect().await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    pub async fn set_publish_status(
+        &self,
+        id: &str,
+        status: &PublishStatus,
+        rejected_note: Option<&str>,
+    ) -> Result<(), TeamderError> {
+        let status_str = serde_json::to_value(status)
+            .ok()
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_default();
+        let mut patch = doc! {
+            "publish_status": &status_str,
+            "updated_at": Utc::now().to_rfc3339(),
+        };
+        match rejected_note {
+            Some(note) => { patch.insert("rejected_note", note); }
+            None => { patch.insert("rejected_note", mongodb::bson::Bson::Null); }
+        }
+        self.col
+            .update_one(doc! { "_id": id }, doc! { "$set": patch })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
     }
 
     pub async fn add_registration(
@@ -85,6 +138,25 @@ impl CompetitionRepo {
                 doc! { "_id": comp_id },
                 doc! { "$set": { "winners": winners } },
             )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn update(&self, id: &str, patch: mongodb::bson::Document) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": id },
+                doc! { "$set": patch },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn delete(&self, id: &str) -> Result<(), TeamderError> {
+        self.col
+            .delete_one(doc! { "_id": id })
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())

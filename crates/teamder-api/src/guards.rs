@@ -49,6 +49,25 @@ impl<'r> FromRequest<'r> for OptionalAuth {
     }
 }
 
+/// Request guard that requires the user to be an admin OR a competition publisher.
+pub struct PublisherUser(pub Claims);
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for PublisherUser {
+    type Error = ();
+
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        match AuthUser::from_request(req).await {
+            Outcome::Success(AuthUser(claims)) if claims.is_publisher || claims.is_admin => {
+                Outcome::Success(PublisherUser(claims))
+            }
+            Outcome::Success(_) => Outcome::Error((Status::Forbidden, ())),
+            Outcome::Error(e) => Outcome::Error(e),
+            Outcome::Forward(f) => Outcome::Forward(f),
+        }
+    }
+}
+
 /// Request guard that additionally requires the user to be an admin.
 pub struct AdminUser(#[allow(dead_code)] pub Claims);
 

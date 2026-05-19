@@ -11,7 +11,7 @@ pub enum InviteStatus {
     Expired,
 }
 
-/// An invite sent from one user to another to join a project or study group.
+/// An invite sent from one user to another to join a project, study group, or competition team.
 /// Only IDs are stored — names are resolved at the API layer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Invite {
@@ -22,8 +22,12 @@ pub struct Invite {
     pub project_id: Option<String>,
     #[serde(default)]
     pub study_group_id: Option<String>,
+    #[serde(default)]
+    pub competition_team_id: Option<String>,
     pub message: Option<String>,
     pub status: InviteStatus,
+    #[serde(default)]
+    pub is_read: bool,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }
@@ -40,8 +44,10 @@ impl Invite {
             to_user_id: to_user_id.into(),
             project_id: None,
             study_group_id: None,
+            competition_team_id: None,
             message: None,
             status: InviteStatus::Pending,
+            is_read: false,
             created_at: now,
             expires_at: now + chrono::Duration::days(7),
         }
@@ -53,6 +59,7 @@ pub struct SendInviteRequest {
     pub to_user_id: String,
     pub project_id: Option<String>,
     pub study_group_id: Option<String>,
+    pub competition_team_id: Option<String>,
     pub message: Option<String>,
 }
 
@@ -73,8 +80,11 @@ pub struct InviteResponse {
     pub project_name: Option<String>,
     pub study_group_id: Option<String>,
     pub study_group_name: Option<String>,
+    pub competition_team_id: Option<String>,
+    pub competition_team_name: Option<String>,
     pub message: Option<String>,
     pub status: InviteStatus,
+    pub is_read: bool,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }

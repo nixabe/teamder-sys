@@ -11,6 +11,7 @@ use teamder_core::{
 };
 
 use crate::{error::ApiResult, guards::AuthUser, state::AppState};
+use super::projects::maybe_activate_project;
 
 fn enrich(req: JoinRequest, from_user_name: String) -> JoinRequestResponse {
     JoinRequestResponse {
@@ -78,6 +79,7 @@ async fn create_request(
                     if let Some(role_name) = &body.role_wanted {
                         let _ = state.projects.increment_role_filled(&body.entity_id, role_name, 1).await;
                     }
+                    maybe_activate_project(&body.entity_id, state.inner()).await;
                     Ok(Json(json!({ "joined": true, "mode": "direct" })))
                 }
                 JoinMode::Approval => {
@@ -268,6 +270,7 @@ async fn respond(
                 if let Some(role_name) = &req.role_wanted {
                     let _ = state.projects.increment_role_filled(&req.entity_id, role_name, 1).await;
                 }
+                maybe_activate_project(&req.entity_id, state.inner()).await;
             }
             "study_group" => {
                 let member = GroupMember {

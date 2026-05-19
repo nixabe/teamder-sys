@@ -45,6 +45,7 @@ impl InviteRepo {
         to_id: &str,
         project_id: Option<&str>,
         study_group_id: Option<&str>,
+        competition_team_id: Option<&str>,
     ) -> Result<Option<Invite>, TeamderError> {
         let mut filter = doc! {
             "from_user_id": from_id,
@@ -58,6 +59,10 @@ impl InviteRepo {
         match study_group_id {
             Some(sgid) => filter.insert("study_group_id", sgid),
             None => filter.insert("study_group_id", mongodb::bson::Bson::Null),
+        };
+        match competition_team_id {
+            Some(ctid) => filter.insert("competition_team_id", ctid),
+            None => filter.insert("competition_team_id", mongodb::bson::Bson::Null),
         };
         self.col.find_one(filter).await
             .map_err(|e| TeamderError::Database(e.to_string()))
@@ -78,6 +83,28 @@ impl InviteRepo {
             .update_one(
                 doc! { "_id": id },
                 doc! { "$set": { "status": status_bson } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn mark_read(&self, id: &str, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": id, "to_user_id": user_id },
+                doc! { "$set": { "is_read": true } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn mark_all_read(&self, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .update_many(
+                doc! { "to_user_id": user_id, "is_read": false },
+                doc! { "$set": { "is_read": true } },
             )
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;

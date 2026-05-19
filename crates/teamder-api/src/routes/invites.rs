@@ -43,6 +43,11 @@ async fn enrich_invites(
         } else {
             None
         };
+        let competition_team_name = if let Some(ctid) = &inv.competition_team_id {
+            state.competition_teams.find_by_id(ctid).await?.map(|ct| ct.name)
+        } else {
+            None
+        };
 
         result.push(InviteResponse {
             id: inv.id,
@@ -54,8 +59,11 @@ async fn enrich_invites(
             project_name,
             study_group_id: inv.study_group_id,
             study_group_name,
+            competition_team_id: inv.competition_team_id,
+            competition_team_name,
             message: inv.message,
             status: inv.status,
+            is_read: inv.is_read,
             created_at: inv.created_at,
             expires_at: inv.expires_at,
         });
@@ -96,6 +104,11 @@ async fn send_invite(
             invite.study_group_id = Some(sgid.clone());
         }
     }
+    if let Some(ctid) = &req.competition_team_id {
+        if state.competition_teams.find_by_id(ctid).await?.is_some() {
+            invite.competition_team_id = Some(ctid.clone());
+        }
+    }
 
     // Reject duplicate pending invites between the same pair for the same context.
     let existing = state.invites
@@ -104,6 +117,7 @@ async fn send_invite(
             &req.to_user_id,
             invite.project_id.as_deref(),
             invite.study_group_id.as_deref(),
+            invite.competition_team_id.as_deref(),
         )
         .await?;
     if existing.is_some() {
@@ -140,6 +154,11 @@ async fn send_invite(
     } else {
         None
     };
+    let competition_team_name = if let Some(ctid) = &invite.competition_team_id {
+        state.competition_teams.find_by_id(ctid).await?.map(|ct| ct.name)
+    } else {
+        None
+    };
 
     Ok(Json(InviteResponse {
         id: invite.id,
@@ -151,8 +170,11 @@ async fn send_invite(
         project_name,
         study_group_id: invite.study_group_id,
         study_group_name,
+        competition_team_id: invite.competition_team_id,
+        competition_team_name,
         message: invite.message,
         status: invite.status,
+        is_read: false,
         created_at: invite.created_at,
         expires_at: invite.expires_at,
     }))
@@ -250,6 +272,24 @@ async fn delete_invite(
     Ok(Json(json!({ "success": true })))
 }
 
+/// PATCH /api/v1/invites/<id>/read  (auth — recipient only)
+#[patch("/<id>/read")]
+async fn mark_read(
+    id: String,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    state.invites.mark_read(&id, &auth.0.sub).await?;
+    Ok(Json(json!({ "success": true })))
+}
+
+/// POST /api/v1/invites/read-all  (auth — marks all received invites as read)
+#[post("/read-all")]
+async fn mark_all_read(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
+    state.invites.mark_all_read(&auth.0.sub).await?;
+    Ok(Json(json!({ "success": true })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![send_invite, list_invites, get_invite, respond_invite, delete_invite]
+    routes![send_invite, list_invites, get_invite, respond_invite, delete_invite, mark_read, mark_all_read]
 }

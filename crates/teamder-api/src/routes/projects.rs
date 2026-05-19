@@ -11,6 +11,24 @@ use teamder_core::{
 
 use crate::{error::ApiResult, guards::AuthUser, state::AppState};
 
+/// After a member is added or a role is assigned, check if all roles are now filled.
+/// If yes and the project is still Recruiting, auto-transition it to Active.
+pub async fn maybe_activate_project(project_id: &str, state: &AppState) {
+    let Ok(Some(p)) = state.projects.find_by_id(project_id).await else { return };
+    if p.status != ProjectStatus::Recruiting { return }
+    if p.roles.is_empty() { return }
+    let all_filled = p.roles.iter().all(|r| r.filled >= r.count_needed);
+    if !all_filled { return }
+    let update = UpdateProjectRequest {
+        name: None, description: None, goals: None,
+        status: Some(ProjectStatus::Active),
+        roles: None, skills: None, deadline: None,
+        collab: None, duration: None, is_public: None,
+        join_mode: None, banner_image: None,
+    };
+    let _ = state.projects.update(project_id, &update).await;
+}
+
 async fn enrich_projects(
     projects: Vec<Project>,
     state: &AppState,
@@ -380,6 +398,58 @@ async fn complete_project(
     Ok(Json(json!({ "success": true })))
 }
 
+/// POST /api/v1/projects/<id>/leave  (auth — member only, not lead)
+#[post("/<id>/leave")]
+async fn leave_project(
+    id: String,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let user_id = &auth.0.sub;
+    let project = state.projects.find_by_id(&id).await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Project {} not found", id)))?;
+
+    if project.lead_user_id == *user_id {
+        return Err(TeamderError::Validation("Project lead cannot leave — transfer ownership or delete the project instead".into()).into());
+    }
+    if !project.team.iter().any(|m| m.user_id == *user_id) {
+        return Err(TeamderError::NotFound("You are not a member of this project".into()).into());
+    }
+
+    // 5-minute cooldown check
+    let log_key = format!("{}:{}", user_id, id);
+    {
+        let log = state.leave_log.lock().await;
+        if let Some(left_at) = log.get(&log_key) {
+            let elapsed = chrono::Utc::now() - *left_at;
+            if elapsed.num_seconds() < 300 {
+                let remaining = 300 - elapsed.num_seconds();
+                return Err(TeamderError::Conflict(
+                    format!("You recently left this project. Please wait {} more seconds before rejoining is allowed.", remaining)
+                ).into());
+            }
+        }
+    }
+
+    // Decrement filled count for the role the member held
+    let member_role = project.team.iter()
+        .find(|m| m.user_id == *user_id)
+        .and_then(|m| m.role.clone());
+    if let Some(role_name) = &member_role {
+        let _ = state.projects.increment_role_filled(&id, role_name, -1).await;
+    }
+
+    state.projects.remove_member(&id, user_id).await?;
+
+    // Record leave time for cooldown
+    {
+        let mut log = state.leave_log.lock().await;
+        log.insert(log_key, chrono::Utc::now());
+    }
+
+    Ok(Json(json!({ "success": true })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects, joined_projects, recommend_users, remove_member, set_member_role, complete_project]
+    routes![list_projects, get_project, create_project, update_project, delete_project, my_projects, joined_projects, recommend_users, remove_member, set_member_role, complete_project, leave_project]
 }

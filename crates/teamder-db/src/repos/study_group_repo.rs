@@ -172,6 +172,14 @@ impl StudyGroupRepo {
         Ok(())
     }
 
+    pub async fn delete(&self, id: &str) -> Result<(), TeamderError> {
+        self.col
+            .delete_one(doc! { "_id": id })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn count(&self) -> Result<u64, TeamderError> {
         self.col.count_documents(doc! {}).await
             .map_err(|e| TeamderError::Database(e.to_string()))

@@ -130,7 +130,7 @@ async fn create_admin(db: &DbClient) -> (String, String) {
     col.insert_one(&admin).await.expect("insert admin failed");
 
     let token =
-        teamder_api::auth::create_token(&admin.id, &admin.email, true, TEST_SECRET).unwrap();
+        teamder_api::auth::create_token(&admin.id, &admin.email, true, false, TEST_SECRET).unwrap();
     (admin.id, token)
 }
 

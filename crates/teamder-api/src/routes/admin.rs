@@ -87,6 +87,7 @@ async fn list_projects(
 }
 
 /// POST /api/v1/admin/users/<id>/promote  (admin only)
+/// Accepts `{ "value": bool }` for admin promotion OR `{ "is_publisher": bool }` for publisher role.
 #[post("/users/<id>/promote", data = "<req>")]
 async fn promote_user(
     id: String,
@@ -94,9 +95,27 @@ async fn promote_user(
     _admin: AdminUser,
     state: &State<AppState>,
 ) -> ApiResult<Value> {
+    if let Some(pub_val) = req.0.get("is_publisher").and_then(|v| v.as_bool()) {
+        state.users.set_publisher(&id, pub_val).await?;
+        return Ok(Json(json!({ "success": true, "is_publisher": pub_val })));
+    }
     let val = req.0.get("value").and_then(|v| v.as_bool()).unwrap_or(true);
     state.users.set_admin(&id, val).await?;
     Ok(Json(json!({ "success": true, "is_admin": val })))
+}
+
+/// GET /api/v1/admin/competitions  (admin only — all competitions regardless of publish status)
+#[get("/competitions")]
+async fn list_all_competitions(_admin: AdminUser, state: &State<AppState>) -> ApiResult<Value> {
+    use teamder_core::models::competition::CompetitionResponse;
+    let comps: Vec<CompetitionResponse> = state
+        .competitions
+        .list_all()
+        .await?
+        .into_iter()
+        .map(CompetitionResponse::from)
+        .collect();
+    Ok(Json(json!({ "data": comps })))
 }
 
 /// POST /api/v1/admin/projects/<id>/promote  (admin only)
@@ -230,5 +249,5 @@ async fn export_users_csv(_admin: AdminUser, state: &State<AppState>) -> Result<
 fn _silence(_: TeamderError) {}
 
 pub fn routes() -> Vec<Route> {
-    routes![stats, list_users, list_projects, promote_project, promote_user, timeseries, export_users_csv]
+    routes![stats, list_users, list_projects, list_all_competitions, promote_project, promote_user, timeseries, export_users_csv]
 }

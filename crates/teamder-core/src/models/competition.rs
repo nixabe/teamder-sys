@@ -11,6 +11,19 @@ pub enum CompetitionStatus {
     Past,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum PublishStatus {
+    Draft,
+    PendingReview,
+    Published,
+    Rejected,
+}
+
+fn default_publish_status() -> PublishStatus {
+    PublishStatus::Published
+}
+
 /// Registration record for a competition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Registration {
@@ -39,6 +52,12 @@ pub struct Competition {
     pub is_featured: bool,
     #[serde(default)]
     pub banner_image: Option<String>,
+    #[serde(default = "default_publish_status")]
+    pub publish_status: PublishStatus,
+    #[serde(default)]
+    pub publisher_id: Option<String>,
+    #[serde(default)]
+    pub rejected_note: Option<String>,
     pub registrations: Vec<Registration>,
     /// User IDs who clicked "I'm interested" — used for the interest counter
     /// and to recommend the competition to similar users.
@@ -74,6 +93,9 @@ impl Competition {
             description: description.into(),
             is_featured: false,
             banner_image: None,
+            publish_status: PublishStatus::Draft,
+            publisher_id: None,
+            rejected_note: None,
             registrations: vec![],
             interested_user_ids: vec![],
             winners: vec![],
@@ -122,10 +144,18 @@ pub struct CompetitionResponse {
     pub description: String,
     pub is_featured: bool,
     pub banner_image: Option<String>,
+    pub publish_status: PublishStatus,
+    pub publisher_id: Option<String>,
+    pub rejected_note: Option<String>,
     pub registration_count: usize,
     pub interested_count: usize,
     pub winners: Vec<String>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RejectCompetitionRequest {
+    pub note: Option<String>,
 }
 
 impl From<Competition> for CompetitionResponse {
@@ -148,6 +178,9 @@ impl From<Competition> for CompetitionResponse {
             description: c.description,
             is_featured: c.is_featured,
             banner_image: c.banner_image,
+            publish_status: c.publish_status,
+            publisher_id: c.publisher_id,
+            rejected_note: c.rejected_note,
             registration_count: count,
             interested_count: interested,
             winners: c.winners,
@@ -225,5 +258,46 @@ mod tests {
         let c = make_competition();
         assert_eq!(c.name, "Test Hackathon");
         assert_eq!(c.organizer, "FJCU");
+    }
+
+    #[test]
+    fn test_new_competition_default_publish_status_draft() {
+        let c = make_competition();
+        assert_eq!(c.publish_status, PublishStatus::Draft);
+    }
+
+    #[test]
+    fn test_new_competition_no_publisher_id() {
+        let c = make_competition();
+        assert!(c.publisher_id.is_none());
+        assert!(c.rejected_note.is_none());
+    }
+
+    #[test]
+    fn test_default_publish_status_serde_backward_compat() {
+        // Documents without publish_status field should default to Published
+        let json = r#"{"_id":"x","name":"N","organizer":"O","icon":"I","icon_bg":"bg","status":"upcoming","prize":"P","team_size_min":2,"team_size_max":5,"duration":"1m","tags":[],"description":"D","is_featured":false,"registrations":[],"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}"#;
+        let c: Competition = serde_json::from_str(json).unwrap();
+        assert_eq!(c.publish_status, PublishStatus::Published);
+    }
+
+    #[test]
+    fn test_publish_status_serde_round_trip() {
+        let s = serde_json::to_string(&PublishStatus::PendingReview).unwrap();
+        assert_eq!(s, "\"pending_review\"");
+        let back: PublishStatus = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, PublishStatus::PendingReview);
+    }
+
+    #[test]
+    fn test_response_maps_publish_status_and_publisher_id() {
+        let mut c = make_competition();
+        c.publish_status = PublishStatus::Rejected;
+        c.publisher_id = Some("pub-1".into());
+        c.rejected_note = Some("Needs more detail".into());
+        let resp = CompetitionResponse::from(c);
+        assert_eq!(resp.publish_status, PublishStatus::Rejected);
+        assert_eq!(resp.publisher_id, Some("pub-1".into()));
+        assert_eq!(resp.rejected_note, Some("Needs more detail".into()));
     }
 }

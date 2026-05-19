@@ -1,3 +1,6 @@
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
+use chrono::{DateTime, Utc};
 use teamder_db::{
     DbClient,
     repos::{
@@ -26,6 +29,8 @@ pub struct AppState {
     pub skill_catalog: SkillCatalogRepo,
     pub chat: ChatState,
     pub jwt_secret: String,
+    /// Tracks when a user last left a project. Key = "{user_id}:{project_id}"
+    pub leave_log: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
 }
 
 impl AppState {
@@ -52,6 +57,7 @@ impl AppState {
             skill_catalog: SkillCatalogRepo::new(&db),
             chat: ChatState::new(),
             jwt_secret,
+            leave_log: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }

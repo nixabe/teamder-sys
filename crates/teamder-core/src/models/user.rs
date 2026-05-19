@@ -87,6 +87,8 @@ pub struct User {
     pub collaborations: u32,
     pub is_admin: bool,
     #[serde(default)]
+    pub is_publisher: bool,
+    #[serde(default)]
     pub avatar_url: Option<String>,
     #[serde(default)]
     pub resume_url: Option<String>,
@@ -174,6 +176,7 @@ impl User {
             projects_done: 0,
             collaborations: 0,
             is_admin: false,
+            is_publisher: false,
             avatar_url: None,
             resume_url: None,
             reset_token: None,
@@ -299,6 +302,7 @@ pub struct UserResponse {
     pub avatar_url: Option<String>,
     pub resume_url: Option<String>,
     pub is_admin: bool,
+    pub is_publisher: bool,
     pub onboarded: bool,
     pub headline: Option<String>,
     pub notify_email: bool,
@@ -341,6 +345,7 @@ impl From<User> for UserResponse {
             avatar_url: u.avatar_url,
             resume_url: u.resume_url,
             is_admin: u.is_admin,
+            is_publisher: u.is_publisher,
             onboarded: u.onboarded,
             headline: u.headline,
             notify_email: u.notify_email,
@@ -431,5 +436,19 @@ mod tests {
         let u1 = User::new("a@b.com", "h", "Alice Wang", "Dev", "CS");
         let u2 = User::new("b@c.com", "h", "Bob Lin", "Dev", "CS");
         assert_ne!(u1.id, u2.id);
+    }
+
+    #[test]
+    fn test_new_user_not_publisher() {
+        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        assert!(!u.is_publisher);
+    }
+
+    #[test]
+    fn test_user_response_maps_is_publisher() {
+        let mut u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        u.is_publisher = true;
+        let resp = UserResponse::from(u);
+        assert!(resp.is_publisher);
     }
 }

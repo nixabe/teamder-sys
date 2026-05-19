@@ -11,6 +11,8 @@ pub struct Claims {
     pub email: String,
     /// Is admin
     pub is_admin: bool,
+    /// Is competition publisher
+    pub is_publisher: bool,
     /// Issued at (unix timestamp)
     pub iat: i64,
     /// Expiry (unix timestamp)
@@ -21,6 +23,7 @@ pub fn create_token(
     user_id: &str,
     email: &str,
     is_admin: bool,
+    is_publisher: bool,
     secret: &str,
 ) -> Result<String, TeamderError> {
     let now = Utc::now();
@@ -29,6 +32,7 @@ pub fn create_token(
         sub: user_id.to_string(),
         email: email.to_string(),
         is_admin,
+        is_publisher,
         iat: now.timestamp(),
         exp,
     };
@@ -58,7 +62,7 @@ mod tests {
 
     #[test]
     fn test_create_token_returns_non_empty_string() {
-        let token = create_token("user-123", "user@test.com", false, SECRET).unwrap();
+        let token = create_token("user-123", "user@test.com", false, false, SECRET).unwrap();
         assert!(!token.is_empty());
         // JWT has three dot-separated parts
         assert_eq!(token.split('.').count(), 3);
@@ -66,7 +70,7 @@ mod tests {
 
     #[test]
     fn test_verify_token_round_trip() {
-        let token = create_token("user-abc", "alice@test.com", false, SECRET).unwrap();
+        let token = create_token("user-abc", "alice@test.com", false, false, SECRET).unwrap();
         let claims = verify_token(&token, SECRET).unwrap();
         assert_eq!(claims.sub, "user-abc");
         assert_eq!(claims.email, "alice@test.com");
@@ -75,14 +79,14 @@ mod tests {
 
     #[test]
     fn test_verify_token_admin_flag_preserved() {
-        let token = create_token("admin-1", "admin@test.com", true, SECRET).unwrap();
+        let token = create_token("admin-1", "admin@test.com", true, false, SECRET).unwrap();
         let claims = verify_token(&token, SECRET).unwrap();
         assert!(claims.is_admin);
     }
 
     #[test]
     fn test_verify_token_wrong_secret_returns_unauthorized() {
-        let token = create_token("user-1", "u@test.com", false, SECRET).unwrap();
+        let token = create_token("user-1", "u@test.com", false, false, SECRET).unwrap();
         let result = verify_token(&token, "wrong-secret");
         assert!(matches!(result, Err(TeamderError::Unauthorized)));
     }
@@ -101,7 +105,7 @@ mod tests {
 
     #[test]
     fn test_token_exp_is_in_future() {
-        let token = create_token("user-1", "u@test.com", false, SECRET).unwrap();
+        let token = create_token("user-1", "u@test.com", false, false, SECRET).unwrap();
         let claims = verify_token(&token, SECRET).unwrap();
         let now = Utc::now().timestamp();
         assert!(claims.exp > now);
@@ -109,9 +113,30 @@ mod tests {
 
     #[test]
     fn test_token_iat_is_in_past_or_now() {
-        let token = create_token("user-1", "u@test.com", false, SECRET).unwrap();
+        let token = create_token("user-1", "u@test.com", false, false, SECRET).unwrap();
         let claims = verify_token(&token, SECRET).unwrap();
         let now = Utc::now().timestamp();
         assert!(claims.iat <= now);
+    }
+
+    #[test]
+    fn test_create_token_publisher_flag_true_preserved() {
+        let token = create_token("pub-1", "pub@test.com", false, true, SECRET).unwrap();
+        let claims = verify_token(&token, SECRET).unwrap();
+        assert!(claims.is_publisher);
+        assert!(!claims.is_admin);
+    }
+
+    #[test]
+    fn test_admin_and_publisher_flags_are_independent() {
+        let token = create_token("admin-pub", "ap@test.com", true, true, SECRET).unwrap();
+        let claims = verify_token(&token, SECRET).unwrap();
+        assert!(claims.is_admin);
+        assert!(claims.is_publisher);
+
+        let token2 = create_token("admin-only", "a@test.com", true, false, SECRET).unwrap();
+        let claims2 = verify_token(&token2, SECRET).unwrap();
+        assert!(claims2.is_admin);
+        assert!(!claims2.is_publisher);
     }
 }

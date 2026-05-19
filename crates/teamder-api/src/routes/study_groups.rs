@@ -9,7 +9,7 @@ use teamder_core::{
 };
 use chrono::Utc;
 
-use crate::{error::ApiResult, guards::AuthUser, state::AppState};
+use crate::{error::ApiResult, guards::{AdminUser, AuthUser}, state::AppState};
 
 /// GET /api/v1/study-groups?limit=20&skip=0&open=true
 #[get("/?<limit>&<skip>&<open>")]
@@ -367,6 +367,22 @@ async fn complete_group(
     Ok(Json(json!({ "success": true })))
 }
 
+/// DELETE /api/v1/study-groups/<id>  (admin only)
+#[delete("/<id>")]
+async fn delete_group(
+    id: String,
+    _admin: AdminUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let _ = state
+        .study_groups
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
+    state.study_groups.delete(&id).await?;
+    Ok(Json(json!({ "success": true })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups, list_notes, add_note, delete_note, leave_group, update_progress, complete_group]
+    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups, list_notes, add_note, delete_note, leave_group, update_progress, complete_group, delete_group]
 }

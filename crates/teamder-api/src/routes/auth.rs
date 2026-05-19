@@ -85,7 +85,7 @@ async fn register(
 
     state.users.create(&user).await?;
 
-    let token = auth::create_token(&user.id, &user.email, user.is_admin, &state.jwt_secret)?;
+    let token = auth::create_token(&user.id, &user.email, user.is_admin, user.is_publisher, &state.jwt_secret)?;
 
     Ok(Json(AuthResponse {
         token,
@@ -109,7 +109,7 @@ async fn login(req: Json<LoginRequest>, state: &State<AppState>) -> ApiResult<Au
         return Err(TeamderError::Unauthorized.into());
     }
 
-    let token = auth::create_token(&user.id, &user.email, user.is_admin, &state.jwt_secret)?;
+    let token = auth::create_token(&user.id, &user.email, user.is_admin, user.is_publisher, &state.jwt_secret)?;
 
     Ok(Json(AuthResponse {
         token,
