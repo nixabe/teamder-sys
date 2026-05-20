@@ -9,7 +9,21 @@ use teamder_core::{
 };
 use chrono::Utc;
 
-use crate::{error::ApiResult, guards::{AdminUser, AuthUser}, state::AppState};
+use crate::{error::ApiResult, guards::AuthUser, state::AppState};
+
+#[derive(Debug, Deserialize)]
+struct UpdateStudyGroupRequest {
+    name: Option<String>,
+    goal: Option<String>,
+    description: Option<String>,
+    subject: Option<String>,
+    tags: Option<Vec<String>>,
+    schedule: Option<String>,
+    max_members: Option<u8>,
+    is_open: Option<bool>,
+    join_mode: Option<String>,
+    banner_image: Option<String>,
+}
 
 /// GET /api/v1/study-groups?limit=20&skip=0&open=true
 #[get("/?<limit>&<skip>&<open>")]
@@ -382,22 +396,70 @@ async fn complete_group(
     Ok(Json(json!({ "success": true })))
 }
 
-/// DELETE /api/v1/study-groups/<id>  (admin only)
-#[delete("/<id>")]
-async fn delete_group(
+/// PATCH /api/v1/study-groups/<id>  (auth — creator only)
+#[patch("/<id>", data = "<req>")]
+async fn update_group(
     id: String,
-    _admin: AdminUser,
+    req: Json<UpdateStudyGroupRequest>,
+    auth: AuthUser,
     state: &State<AppState>,
 ) -> ApiResult<Value> {
-    let _ = state
+    use mongodb::bson::{doc, to_bson};
+
+    let group = state
         .study_groups
         .find_by_id(&id)
         .await?
         .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
+
+    if group.created_by != auth.0.sub {
+        return Err(TeamderError::Forbidden.into());
+    }
+
+    let mut fields = doc! {};
+    if let Some(v) = &req.name { fields.insert("name", v.as_str()); }
+    if let Some(v) = &req.goal { fields.insert("goal", v.as_str()); }
+    if let Some(v) = &req.description { fields.insert("description", v.as_str()); }
+    if let Some(v) = &req.subject { fields.insert("subject", v.as_str()); }
+    if let Some(v) = &req.tags {
+        let bson_tags = to_bson(v).map_err(|e| TeamderError::Internal(e.to_string()))?;
+        fields.insert("tags", bson_tags);
+    }
+    if let Some(v) = &req.schedule { fields.insert("schedule", v.as_str()); }
+    if let Some(v) = req.max_members { fields.insert("max_members", v as i32); }
+    if let Some(v) = req.is_open { fields.insert("is_open", v); }
+    if let Some(v) = &req.join_mode { fields.insert("join_mode", v.as_str()); }
+    if let Some(v) = &req.banner_image { fields.insert("banner_image", v.as_str()); }
+
+    if fields.is_empty() {
+        return Ok(Json(json!({ "success": true })));
+    }
+
+    state.study_groups.update(&id, fields).await?;
+    Ok(Json(json!({ "success": true })))
+}
+
+/// DELETE /api/v1/study-groups/<id>  (auth — creator or admin)
+#[delete("/<id>")]
+async fn delete_group(
+    id: String,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let group = state
+        .study_groups
+        .find_by_id(&id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
+
+    if group.created_by != auth.0.sub && !auth.0.is_admin {
+        return Err(TeamderError::Forbidden.into());
+    }
+
     state.study_groups.delete(&id).await?;
     Ok(Json(json!({ "success": true })))
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups, list_notes, add_note, delete_note, leave_group, update_progress, complete_group, delete_group]
+    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups, list_notes, add_note, delete_note, leave_group, update_progress, complete_group, update_group, delete_group]
 }

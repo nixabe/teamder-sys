@@ -2,8 +2,8 @@
 cli_colors = false
 
 [default.limits]
-file = "10 MiB"
-data-form = "12 MiB"
+file = "20 MiB"
+data-form = "22 MiB"
 
 [debug]
 address = "127.0.0.1"

@@ -1,5 +1,5 @@
 use futures_util::TryStreamExt;
-use mongodb::{Collection, bson::doc};
+use mongodb::{Collection, bson::{doc, Document}};
 use teamder_core::{error::TeamderError, models::study_group::StudyGroup};
 use crate::DbClient;
 
@@ -166,6 +166,18 @@ impl StudyGroupRepo {
                     "current_week": current_week as i32,
                     "updated_at": chrono::Utc::now().to_rfc3339(),
                 } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn update(&self, group_id: &str, mut fields: Document) -> Result<(), TeamderError> {
+        fields.insert("updated_at", chrono::Utc::now().to_rfc3339());
+        self.col
+            .update_one(
+                doc! { "_id": group_id },
+                doc! { "$set": fields },
             )
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
