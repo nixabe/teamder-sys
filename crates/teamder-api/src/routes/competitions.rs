@@ -10,17 +10,18 @@ use teamder_core::{
 };
 use chrono::Utc;
 
-use crate::{error::ApiResult, guards::{AdminUser, AuthUser, PublisherUser}, state::AppState};
+use crate::{error::ApiResult, guards::{AdminUser, AuthUser, OptionalAuth, PublisherUser}, state::AppState};
 
 /// GET /api/v1/competitions
 #[get("/")]
-async fn list_competitions(state: &State<AppState>) -> ApiResult<Value> {
+async fn list_competitions(viewer: OptionalAuth, state: &State<AppState>) -> ApiResult<Value> {
+    let viewer_id = viewer.0.as_ref().map(|c| c.sub.as_str());
     let comps: Vec<CompetitionResponse> = state
         .competitions
         .list()
         .await?
         .into_iter()
-        .map(CompetitionResponse::from)
+        .map(|c| CompetitionResponse::from_competition(c, viewer_id))
         .collect();
 
     Ok(Json(json!({ "data": comps })))
@@ -28,13 +29,14 @@ async fn list_competitions(state: &State<AppState>) -> ApiResult<Value> {
 
 /// GET /api/v1/competitions/featured
 #[get("/featured")]
-async fn featured_competitions(state: &State<AppState>) -> ApiResult<Value> {
+async fn featured_competitions(viewer: OptionalAuth, state: &State<AppState>) -> ApiResult<Value> {
+    let viewer_id = viewer.0.as_ref().map(|c| c.sub.as_str());
     let comps: Vec<CompetitionResponse> = state
         .competitions
         .list_featured()
         .await?
         .into_iter()
-        .map(CompetitionResponse::from)
+        .map(|c| CompetitionResponse::from_competition(c, viewer_id))
         .collect();
 
     Ok(Json(json!({ "data": comps })))
@@ -70,13 +72,14 @@ async fn list_pending(_admin: AdminUser, state: &State<AppState>) -> ApiResult<V
 
 /// GET /api/v1/competitions/<id>
 #[get("/<id>")]
-async fn get_competition(id: String, state: &State<AppState>) -> ApiResult<CompetitionResponse> {
+async fn get_competition(id: String, viewer: OptionalAuth, state: &State<AppState>) -> ApiResult<CompetitionResponse> {
     let comp = state
         .competitions
         .find_by_id(&id)
         .await?
         .ok_or_else(|| TeamderError::NotFound(format!("Competition {} not found", id)))?;
-    Ok(Json(comp.into()))
+    let viewer_id = viewer.0.as_ref().map(|c| c.sub.as_str());
+    Ok(Json(CompetitionResponse::from_competition(comp, viewer_id)))
 }
 
 /// POST /api/v1/competitions  (admin → Published immediately; publisher → Draft)
@@ -198,16 +201,27 @@ async fn register_competition(
     auth: AuthUser,
     state: &State<AppState>,
 ) -> ApiResult<Value> {
-    let _ = state
+    let comp = state
         .competitions
         .find_by_id(&id)
         .await?
         .ok_or_else(|| TeamderError::NotFound(format!("Competition {} not found", id)))?;
 
+    // Reject duplicate registration — without this the user can spam-click
+    // "Register" and pile up rows in the registrations array.
+    if comp.registrations.iter().any(|r| r.user_id == auth.0.sub) {
+        return Err(TeamderError::Conflict(
+            "You have already registered for this competition".into()
+        ).into());
+    }
+
     let registration = Registration {
         user_id: auth.0.sub.clone(),
-        team_name: req.team_name.clone(),
+        team_name: req.team_name.clone().filter(|s| !s.trim().is_empty()),
         registered_at: Utc::now(),
+        motivation: req.motivation.clone().filter(|s| !s.trim().is_empty()),
+        skills: req.skills.clone().filter(|s| !s.trim().is_empty()),
+        contact_email: req.contact_email.clone().filter(|s| !s.trim().is_empty()),
     };
 
     state.competitions.add_registration(&id, &registration).await?;
@@ -244,6 +258,9 @@ async fn list_registrations(
             "name": name,
             "team_name": r.team_name,
             "registered_at": r.registered_at,
+            "motivation": r.motivation,
+            "skills": r.skills,
+            "contact_email": r.contact_email,
         })
     }).collect();
 
