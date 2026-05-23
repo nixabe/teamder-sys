@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deployment — Teamder Backend Docs</title>
+<style>
+  :root {
+    --c-peach: #DD6E42;
+    --c-peach-dark: #B85530;
+    --c-slate: #4F6D7A;
+    --c-slate-dark: #2C3E45;
+    --c-beige: #E8DAB2;
+    --c-sky: #C0D6DF;
+    --c-sky-light: #DCE8EE;
+    --c-paper: #FAF7F0;
+    --c-ink: #1F2A2F;
+    --c-mute: #8A99A0;
+    --c-success: #3D9970;
+    --c-warning: #E6A817;
+    --c-danger: #C0392B;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--c-paper);
+    color: var(--c-ink);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .sidebar {
+    position: fixed; top: 0; left: 0;
+    width: 260px; height: 100vh;
+    background: var(--c-slate-dark); color: #fff;
+    overflow-y: auto; padding: 24px 0; z-index: 100;
+  }
+  .sidebar .logo {
+    font-size: 20px; font-weight: 700;
+    padding: 0 20px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    margin-bottom: 16px;
+  }
+  .sidebar .logo span { color: var(--c-peach); }
+  .sidebar .section-title {
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.12em; padding: 12px 20px 4px;
+    color: var(--c-peach); font-weight: 600;
+  }
+  .sidebar a {
+    display: block; color: rgba(255,255,255,0.7);
+    text-decoration: none; padding: 5px 20px 5px 24px;
+    font-size: 13px; border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  .sidebar a:hover, .sidebar a.active {
+    color: #fff; background: rgba(255,255,255,0.05);
+    border-left-color: var(--c-peach);
+  }
+  .sidebar a.active { font-weight: 600; }
+  .sidebar .divider {
+    height: 1px; background: rgba(255,255,255,0.08);
+    margin: 12px 20px;
+  }
+  .main {
+    margin-left: 260px; max-width: 900px;
+    padding: 40px 48px 120px;
+  }
+  h1 {
+    font-size: 30px; font-weight: 700;
+    color: var(--c-slate-dark); margin-bottom: 8px;
+    letter-spacing: -0.03em;
+  }
+  .subtitle { font-size: 15px; color: var(--c-mute); margin-bottom: 32px; }
+  h2 {
+    font-size: 21px; font-weight: 700; color: var(--c-slate-dark);
+    margin: 40px 0 14px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--c-peach);
+  }
+  h3 { font-size: 16px; font-weight: 600; color: var(--c-slate); margin: 24px 0 8px; }
+  h4 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 16px 0 6px; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 0 0 14px 24px; }
+  li { margin-bottom: 4px; }
+  a { color: var(--c-peach-dark); }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 20px; font-size: 13.5px; }
+  th {
+    background: var(--c-slate-dark); color: #fff;
+    text-align: left; padding: 8px 12px;
+    font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  td { padding: 7px 12px; border-bottom: 1px solid rgba(79,109,122,0.1); vertical-align: top; }
+  tr:hover td { background: rgba(192,214,223,0.15); }
+  code {
+    background: rgba(79,109,122,0.08); padding: 1px 5px;
+    border-radius: 3px; font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 13px; color: var(--c-slate-dark);
+  }
+  pre {
+    background: var(--c-slate-dark); color: #e0e8ec;
+    padding: 16px 20px; border-radius: 8px;
+    overflow-x: auto; margin: 10px 0 18px;
+    font-size: 13px; line-height: 1.6;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+  .callout {
+    padding: 14px 18px; border-radius: 8px;
+    margin: 14px 0; font-size: 14px;
+  }
+  .callout-info { background: rgba(192,214,223,0.3); border-left: 4px solid var(--c-slate); }
+  .callout-warn { background: rgba(230,168,23,0.1); border-left: 4px solid var(--c-warning); }
+  .callout-success { background: rgba(61,153,112,0.08); border-left: 4px solid var(--c-success); }
+  .callout-danger { background: rgba(192,57,43,0.08); border-left: 4px solid var(--c-danger); }
+  .callout strong { display: block; margin-bottom: 4px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; vertical-align: middle;
+  }
+  .badge-get { background: var(--c-sky); color: var(--c-slate-dark); }
+  .badge-post { background: var(--c-success); color: #fff; }
+  .badge-patch { background: var(--c-warning); color: #fff; }
+  .badge-delete { background: var(--c-danger); color: #fff; }
+  .badge-ws { background: var(--c-slate); color: #fff; }
+  @media (max-width: 860px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px 20px 80px; }
+  }
+  @media print {
+    .sidebar { display: none; }
+    .main { margin-left: 0; max-width: 100%; padding: 20px; }
+  }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <div class="logo"><span>T</span>eamder API</div>
+  <div class="section-title">Documentation</div>
+  <a href="README.html">Overview</a>
+  <a href="getting-started.html">Getting Started</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="api-reference.html">API Reference</a>
+  <a href="database-design.html">Database Design</a>
+  <a href="authentication.html">Authentication</a>
+  <a href="deployment.html" class="active">Deployment</a>
+</nav>
+<div class="main">
+
+  <h1>Deployment</h1>
+  <p class="subtitle">Building, containerizing, and deploying the Teamder backend for production.</p>
+
+  <h2>Production Environment Variables</h2>
+  <table>
+    <thead><tr><th>Variable</th><th>Required</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>MONGODB_URI</code></td><td>Yes</td><td>MongoDB connection string (e.g., <code>mongodb+srv://user:pass@cluster/teamder</code>)</td></tr>
+      <tr><td><code>DB_NAME</code></td><td>Yes</td><td>Database name (default: <code>teamder</code>)</td></tr>
+      <tr><td><code>JWT_SECRET</code></td><td>Yes</td><td><strong>Must be a strong, random value.</strong> Generate with <code>openssl rand -hex 64</code></td></tr>
+      <tr><td><code>RUST_LOG</code></td><td>No</td><td>Log level (recommended: <code>info</code> for production)</td></tr>
+      <tr><td><code>ROCKET_ADDRESS</code></td><td>No</td><td>Bind address (default: <code>127.0.0.1</code>; use <code>0.0.0.0</code> in containers)</td></tr>
+      <tr><td><code>ROCKET_PORT</code></td><td>No</td><td>Bind port (default: <code>8000</code>)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Building for Release</h2>
+
+  <h3>Local Build</h3>
+  <pre><code>cargo build --release -p teamder-api</code></pre>
+  <p>The binary is output to <code>target/release/teamder-api</code>. Release builds enable optimizations (LTO, code-gen units, etc.) and are significantly faster than debug builds.</p>
+
+  <h3>Running the Release Binary</h3>
+  <pre><code># Set environment variables
+export MONGODB_URI="mongodb+srv://..."
+export DB_NAME="teamder"
+export JWT_SECRET="your-strong-random-secret-here"
+export RUST_LOG="info"
+export ROCKET_ADDRESS="0.0.0.0"
+export ROCKET_PORT="8000"
+
+# Run
+./target/release/teamder-api</code></pre>
+
+  <h2>Docker</h2>
+  <p>The project includes a multi-stage Dockerfile.</p>
+
+  <h3>Dockerfile Overview</h3>
+  <p><strong>Builder stage</strong> (rust:1.95):</p>
+  <ol>
+    <li>Copies the full workspace</li>
+    <li>Runs <code>cargo build --release</code></li>
+  </ol>
+  <p><strong>Runtime stage</strong> (debian:bookworm-slim):</p>
+  <ol>
+    <li>Installs <code>ca-certificates</code> (for TLS connections to MongoDB Atlas, etc.)</li>
+    <li>Copies the compiled binary from the builder</li>
+    <li>Exposes port 3000 (note: the Dockerfile exposes 3000, but the default Rocket config uses 8000; set <code>ROCKET_PORT</code> accordingly)</li>
+    <li>Runs the binary</li>
+  </ol>
+
+  <h3>Building the Docker Image</h3>
+  <pre><code>docker build -t teamder-api .</code></pre>
+
+  <h3>Running the Container</h3>
+  <pre><code>docker run -d \
+  --name teamder-api \
+  -p 8000:8000 \
+  -e MONGODB_URI="mongodb://host.docker.internal:27017" \
+  -e DB_NAME="teamder" \
+  -e JWT_SECRET="your-strong-random-secret-here" \
+  -e RUST_LOG="info" \
+  -e ROCKET_ADDRESS="0.0.0.0" \
+  -e ROCKET_PORT="8000" \
+  -v $(pwd)/uploads:/app/uploads \
+  teamder-api</code></pre>
+
+  <div class="callout callout-warn">
+    <strong>Important notes:</strong>
+    <ul style="margin-bottom:0;">
+      <li>Set <code>ROCKET_ADDRESS=0.0.0.0</code> so Rocket binds to all interfaces inside the container</li>
+      <li>Mount the <code>uploads/</code> volume to persist user-uploaded files across container restarts</li>
+      <li>Use <code>host.docker.internal</code> to connect to MongoDB on the host machine (Docker Desktop); for Linux, use <code>--network host</code> or the host's IP address</li>
+    </ul>
+  </div>
+
+  <h3>Docker Compose Example</h3>
+  <pre><code>version: "3.8"
+
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
+      DB_NAME: teamder
+      JWT_SECRET: change-this-to-a-strong-random-secret
+      RUST_LOG: info
+      ROCKET_ADDRESS: "0.0.0.0"
+      ROCKET_PORT: "8000"
+    volumes:
+      - ./uploads:/app/uploads
+    depends_on:
+      - mongo
+
+volumes:
+  mongo-data:</code></pre>
+
+  <h2>MongoDB Setup</h2>
+
+  <h3>Requirements</h3>
+  <ul>
+    <li>MongoDB 6.0+ recommended</li>
+    <li>No special configuration required; the application creates collections on first write</li>
+    <li>The skill catalog is auto-seeded on first startup if the <code>skill_categories</code> collection is empty</li>
+  </ul>
+
+  <h3>Recommended Indexes</h3>
+  <p>While the application works without manually created indexes, the following improve query performance:</p>
+  <pre><code>// Users
+db.users.createIndex({ "email": 1 }, { unique: true });
+db.users.createIndex({ "name": "text", "email": "text" });
+
+// Projects
+db.projects.createIndex({ "lead_user_id": 1 });
+db.projects.createIndex({ "team.user_id": 1 });
+db.projects.createIndex({ "name": "text", "description": "text" });
+
+// Competitions
+db.competitions.createIndex({ "publisher_id": 1 });
+db.competitions.createIndex({ "publish_status": 1 });
+db.competitions.createIndex({ "name": "text", "description": "text" });
+
+// Competition Teams
+db.competition_teams.createIndex({ "competition_id": 1 });
+db.competition_teams.createIndex({ "lead_user_id": 1 });
+
+// Study Groups
+db.study_groups.createIndex({ "members.user_id": 1 });
+db.study_groups.createIndex({ "name": "text" });
+
+// Messages
+db.messages.createIndex({ "from_user_id": 1, "to_user_id": 1, "created_at": -1 });
+
+// Notifications
+db.notifications.createIndex({ "user_id": 1, "created_at": -1 });
+
+// Bookmarks
+db.bookmarks.createIndex({ "user_id": 1, "kind": 1, "entity_id": 1 }, { unique: true });
+
+// Join Requests
+db.join_requests.createIndex({ "owner_id": 1, "status": 1 });
+db.join_requests.createIndex({ "from_user_id": 1, "entity_id": 1, "status": 1 });
+
+// Invites
+db.invites.createIndex({ "to_user_id": 1, "status": 1 });
+
+// Peer Reviews
+db.peer_reviews.createIndex({ "reviewee_id": 1 });</code></pre>
+
+  <h3>MongoDB Atlas</h3>
+  <p>For production, MongoDB Atlas is recommended:</p>
+  <ol>
+    <li>Create a cluster (M10+ for production workloads)</li>
+    <li>Create a database user with read/write access to the <code>teamder</code> database</li>
+    <li>Whitelist the server's IP address (or use <code>0.0.0.0/0</code> for containers with dynamic IPs)</li>
+    <li>Set <code>MONGODB_URI</code> to the Atlas connection string (SRV format)</li>
+  </ol>
+
+  <h2>File Storage</h2>
+
+  <h3>Uploads Directory</h3>
+  <p>User-uploaded files are stored on the local filesystem at <code>uploads/</code> relative to the working directory. The directory structure is:</p>
+  <pre><code>uploads/
+  &lt;user-id&gt;/
+    avatar/       Avatar images
+    portfolio/    Portfolio files
+    resume/       Resume files
+    banners/      Banner images
+    applications/ Application attachments</code></pre>
+
+  <div class="callout callout-info">
+    <strong>Production considerations:</strong>
+    <ol style="margin-bottom:0;">
+      <li><strong>Persistence</strong>: Mount the <code>uploads/</code> directory as a Docker volume or use a persistent disk</li>
+      <li><strong>Backup</strong>: Include the <code>uploads/</code> directory in backup procedures</li>
+      <li><strong>CDN</strong>: For production with many users, consider serving uploads through a CDN or object storage (S3, GCS) instead of Rocket's built-in FileServer</li>
+      <li><strong>Size limits</strong>: Rocket.toml sets file upload limits at 20 MiB per file, 22 MiB per form</li>
+    </ol>
+  </div>
+
+  <h3>Static File Serving</h3>
+  <p>Uploaded files are served by Rocket's <code>FileServer</code> at the <code>/uploads/</code> URL path:</p>
+  <pre><code>GET /uploads/&lt;user-id&gt;/avatar/&lt;filename&gt;</code></pre>
+  <p>There is no authentication on file access. Files are publicly accessible if the URL is known. File URLs use UUID v4 filenames, providing obscurity but not security.</p>
+
+  <h2>CORS Configuration</h2>
+  <p>The production CORS whitelist includes:</p>
+  <pre><code>http://localhost:3000
+http://localhost:3001
+https://teamder.watchandy.me</code></pre>
+  <p>To add or change allowed origins, modify the <code>allowed_origins</code> list in <code>crates/teamder-api/src/main.rs</code>:</p>
+  <pre><code>let allowed_origins = AllowedOrigins::some_exact(&amp;[
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://teamder.watchandy.me",
+    "https://your-production-domain.com",  // Add your domain here
+]);</code></pre>
+  <p>This requires a rebuild. For more flexible configuration, consider reading allowed origins from an environment variable.</p>
+
+  <h2>Security Considerations</h2>
+
+  <h3>JWT Secret</h3>
+  <ul>
+    <li><strong>Must</strong> be changed from the development default</li>
+    <li>Generate a cryptographically random value: <code>openssl rand -hex 64</code></li>
+    <li>Store securely (environment variable, secrets manager)</li>
+    <li>Rotating the secret invalidates all existing tokens</li>
+  </ul>
+
+  <h3>bcrypt Cost Factor</h3>
+  <p>The password hashing cost is hardcoded at 12. This is appropriate for most deployments. Increasing the cost to 13 or 14 doubles or quadruples the time per hash, which improves security at the expense of login/registration latency.</p>
+
+  <h3>Rate Limiting</h3>
+  <div class="callout callout-warn">
+    <strong>The current implementation does not include rate limiting.</strong> For production, consider:
+    <ul style="margin-bottom:0;">
+      <li>A reverse proxy (Nginx, Caddy) with rate limiting rules</li>
+      <li>Rate limiting on authentication endpoints to prevent brute-force attacks</li>
+      <li>Rate limiting on file upload endpoints to prevent abuse</li>
+    </ul>
+  </div>
+
+  <h3>HTTPS</h3>
+  <p>Rocket does not handle TLS termination in this configuration. Use a reverse proxy:</p>
+  <pre><code>Client -&gt; Nginx/Caddy (TLS) -&gt; Rocket (HTTP on localhost:8000)</code></pre>
+
+  <h3>File Upload Security</h3>
+  <ul>
+    <li>Filenames are sanitized (non-alphanumeric characters stripped)</li>
+    <li>Files are renamed to UUID v4 to prevent path traversal and name collisions</li>
+    <li>The delete endpoint validates that the path belongs to the authenticated user and does not contain <code>..</code></li>
+    <li>There is no virus scanning or file type validation beyond extension extraction</li>
+  </ul>
+
+  <h3>Database Security</h3>
+  <ul>
+    <li>MongoDB connection should use authentication in production</li>
+    <li>Use MongoDB Atlas with network-level access control</li>
+    <li>The application does not use MongoDB transactions; consider implications for consistency</li>
+  </ul>
+
+  <h2>Reverse Proxy Configuration</h2>
+
+  <h3>Nginx Example</h3>
+  <pre><code>server {
+    listen 443 ssl;
+    server_name teamder-api.example.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    client_max_body_size 25M;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # WebSocket support for chat
+    location /api/v1/chat/ws {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 86400;
+    }
+}</code></pre>
+
+  <h3>Key Points</h3>
+  <ul>
+    <li>Set <code>client_max_body_size</code> to at least 25M to accommodate file uploads (Rocket's limit is 22 MiB for form data)</li>
+    <li>The WebSocket endpoint requires HTTP/1.1 upgrade headers</li>
+    <li>Set a long <code>proxy_read_timeout</code> for WebSocket connections to prevent premature disconnection</li>
+  </ul>
+
+  <h2>Health Check</h2>
+  <p>Use the health endpoint for load balancer and container orchestration health checks:</p>
+  <pre><code>GET /api/v1/health</code></pre>
+  <p>Returns <code>200 OK</code> with <code>{ "status": "ok" }</code> when the server is running. Note: this endpoint does not verify MongoDB connectivity; it only confirms the Rocket server is accepting requests.</p>
+
+  <h2>Monitoring</h2>
+
+  <h3>Logging</h3>
+  <p>The server uses the <code>tracing</code> crate with <code>tracing-subscriber</code>. Control log output with <code>RUST_LOG</code>:</p>
+  <pre><code># Production recommended
+RUST_LOG=info
+
+# Debugging
+RUST_LOG=teamder_api=debug,teamder_db=debug,rocket=info
+
+# Verbose (includes MongoDB driver logs)
+RUST_LOG=debug</code></pre>
+  <p>Logs are written to stdout in a human-readable format. For structured logging in production, consider configuring <code>tracing-subscriber</code> with a JSON formatter.</p>
+
+</div>
+</body>
+</html>

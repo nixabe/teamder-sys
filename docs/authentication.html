@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Authentication — Teamder Backend Docs</title>
+<style>
+  :root {
+    --c-peach: #DD6E42;
+    --c-peach-dark: #B85530;
+    --c-slate: #4F6D7A;
+    --c-slate-dark: #2C3E45;
+    --c-beige: #E8DAB2;
+    --c-sky: #C0D6DF;
+    --c-sky-light: #DCE8EE;
+    --c-paper: #FAF7F0;
+    --c-ink: #1F2A2F;
+    --c-mute: #8A99A0;
+    --c-success: #3D9970;
+    --c-warning: #E6A817;
+    --c-danger: #C0392B;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--c-paper);
+    color: var(--c-ink);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .sidebar {
+    position: fixed; top: 0; left: 0;
+    width: 260px; height: 100vh;
+    background: var(--c-slate-dark); color: #fff;
+    overflow-y: auto; padding: 24px 0; z-index: 100;
+  }
+  .sidebar .logo {
+    font-size: 20px; font-weight: 700;
+    padding: 0 20px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    margin-bottom: 16px;
+  }
+  .sidebar .logo span { color: var(--c-peach); }
+  .sidebar .section-title {
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.12em; padding: 12px 20px 4px;
+    color: var(--c-peach); font-weight: 600;
+  }
+  .sidebar a {
+    display: block; color: rgba(255,255,255,0.7);
+    text-decoration: none; padding: 5px 20px 5px 24px;
+    font-size: 13px; border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  .sidebar a:hover, .sidebar a.active {
+    color: #fff; background: rgba(255,255,255,0.05);
+    border-left-color: var(--c-peach);
+  }
+  .sidebar a.active { font-weight: 600; }
+  .sidebar .divider {
+    height: 1px; background: rgba(255,255,255,0.08);
+    margin: 12px 20px;
+  }
+  .main {
+    margin-left: 260px; max-width: 900px;
+    padding: 40px 48px 120px;
+  }
+  h1 {
+    font-size: 30px; font-weight: 700;
+    color: var(--c-slate-dark); margin-bottom: 8px;
+    letter-spacing: -0.03em;
+  }
+  .subtitle { font-size: 15px; color: var(--c-mute); margin-bottom: 32px; }
+  h2 {
+    font-size: 21px; font-weight: 700; color: var(--c-slate-dark);
+    margin: 40px 0 14px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--c-peach);
+  }
+  h3 { font-size: 16px; font-weight: 600; color: var(--c-slate); margin: 24px 0 8px; }
+  h4 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 16px 0 6px; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 0 0 14px 24px; }
+  li { margin-bottom: 4px; }
+  a { color: var(--c-peach-dark); }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 20px; font-size: 13.5px; }
+  th {
+    background: var(--c-slate-dark); color: #fff;
+    text-align: left; padding: 8px 12px;
+    font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  td { padding: 7px 12px; border-bottom: 1px solid rgba(79,109,122,0.1); vertical-align: top; }
+  tr:hover td { background: rgba(192,214,223,0.15); }
+  code {
+    background: rgba(79,109,122,0.08); padding: 1px 5px;
+    border-radius: 3px; font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 13px; color: var(--c-slate-dark);
+  }
+  pre {
+    background: var(--c-slate-dark); color: #e0e8ec;
+    padding: 16px 20px; border-radius: 8px;
+    overflow-x: auto; margin: 10px 0 18px;
+    font-size: 13px; line-height: 1.6;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+  .callout {
+    padding: 14px 18px; border-radius: 8px;
+    margin: 14px 0; font-size: 14px;
+  }
+  .callout-info { background: rgba(192,214,223,0.3); border-left: 4px solid var(--c-slate); }
+  .callout-warn { background: rgba(230,168,23,0.1); border-left: 4px solid var(--c-warning); }
+  .callout-success { background: rgba(61,153,112,0.08); border-left: 4px solid var(--c-success); }
+  .callout-danger { background: rgba(192,57,43,0.08); border-left: 4px solid var(--c-danger); }
+  .callout strong { display: block; margin-bottom: 4px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; vertical-align: middle;
+  }
+  .badge-get { background: var(--c-sky); color: var(--c-slate-dark); }
+  .badge-post { background: var(--c-success); color: #fff; }
+  .badge-patch { background: var(--c-warning); color: #fff; }
+  .badge-delete { background: var(--c-danger); color: #fff; }
+  .badge-ws { background: var(--c-slate); color: #fff; }
+  @media (max-width: 860px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px 20px 80px; }
+  }
+  @media print {
+    .sidebar { display: none; }
+    .main { margin-left: 0; max-width: 100%; padding: 20px; }
+  }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <div class="logo"><span>T</span>eamder API</div>
+  <div class="section-title">Documentation</div>
+  <a href="README.html">Overview</a>
+  <a href="getting-started.html">Getting Started</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="api-reference.html">API Reference</a>
+  <a href="database-design.html">Database Design</a>
+  <a href="authentication.html" class="active">Authentication</a>
+  <a href="deployment.html">Deployment</a>
+</nav>
+<div class="main">
+
+  <h1>Authentication</h1>
+  <p class="subtitle">JWT, bcrypt password hashing, request guards, and role-based access control.</p>
+
+  <h2>JWT Structure</h2>
+
+  <h3>Claims</h3>
+  <pre><code>{
+  "sub": "user-uuid-string",
+  "exp": 1234567890
+}</code></pre>
+  <table>
+    <thead><tr><th>Claim</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>sub</code></td><td>String</td><td>The user's <code>_id</code> (UUID v4)</td></tr>
+      <tr><td><code>exp</code></td><td>usize</td><td>Expiration timestamp (Unix epoch seconds)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Configuration</h3>
+  <table>
+    <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Algorithm</td><td>HS256 (HMAC-SHA256)</td></tr>
+      <tr><td>Secret</td><td><code>JWT_SECRET</code> environment variable</td></tr>
+      <tr><td>Expiry</td><td>30 days from token creation</td></tr>
+      <tr><td>Header</td><td><code>Authorization: Bearer &lt;token&gt;</code></td></tr>
+    </tbody>
+  </table>
+  <p>The signing secret is configured via the <code>JWT_SECRET</code> environment variable. The default development value is <code>teamder-dev-secret-change-in-production</code>.</p>
+  <div class="callout callout-danger">
+    <strong>Always set a strong, random secret in production.</strong>
+  </div>
+
+  <h3>Token Lifecycle</h3>
+  <ol>
+    <li>Token is created on registration or login</li>
+    <li>Token is valid for 30 days</li>
+    <li>Token is included in every authenticated request as <code>Authorization: Bearer &lt;token&gt;</code></li>
+    <li>Token is verified on each request by the appropriate request guard</li>
+    <li>There is no token refresh mechanism — clients must re-authenticate after expiry</li>
+    <li>There is no token revocation — tokens remain valid until they expire</li>
+  </ol>
+
+  <h2>Registration Flow</h2>
+  <pre><code>Client                          Server
+  |                               |
+  |  POST /auth/register          |
+  |  { email, password, name }    |
+  | ----------------------------&gt; |
+  |                               |  1. Validate required fields
+  |                               |  2. Check email uniqueness
+  |                               |  3. Hash password (bcrypt, cost 12)
+  |                               |  4. Generate UUID v4 for user ID
+  |                               |  5. Generate initials from name
+  |                               |  6. Create user document
+  |                               |  7. Create JWT token (30-day expiry)
+  |  { token, user }              |
+  | &lt;---------------------------- |</code></pre>
+
+  <h4>Validation</h4>
+  <ul>
+    <li><code>email</code>, <code>password</code>, and <code>name</code> are required (non-empty)</li>
+    <li>Duplicate emails return 409 Conflict</li>
+  </ul>
+
+  <h4>Password hashing</h4>
+  <ul>
+    <li>Algorithm: bcrypt</li>
+    <li>Cost factor: 12</li>
+    <li>The hash is stored in the <code>password_hash</code> field</li>
+    <li>The plaintext password is never stored</li>
+  </ul>
+
+  <h2>Login Flow</h2>
+  <pre><code>Client                          Server
+  |                               |
+  |  POST /auth/login             |
+  |  { email, password }          |
+  | ----------------------------&gt; |
+  |                               |  1. Find user by email
+  |                               |  2. Verify password against hash
+  |                               |  3. Create JWT token (30-day expiry)
+  |  { token, user }              |
+  | &lt;---------------------------- |</code></pre>
+  <div class="callout callout-info">
+    <strong>Error handling:</strong> If the email is not found OR the password does not match, the response is 401 with the message "Invalid email or password" (does not reveal which was wrong).
+  </div>
+
+  <h2>Password Reset Flow</h2>
+  <pre><code>Client                          Server
+  |                               |
+  |  POST /auth/forgot-password   |
+  |  { email }                    |
+  | ----------------------------&gt; |
+  |                               |  1. Look up user by email
+  |                               |  2. Generate 64-char hex reset token
+  |                               |  3. Store token + 30-min expiry on user
+  |  { success, reset_token }     |
+  | &lt;---------------------------- |
+  |                               |
+  |  POST /auth/reset-password    |
+  |  { token, password }          |
+  | ----------------------------&gt; |
+  |                               |  1. Find user by reset_token
+  |                               |  2. Check token has not expired
+  |                               |  3. Hash new password (bcrypt, cost 12)
+  |                               |  4. Update password_hash
+  |                               |  5. Clear reset_token fields
+  |  { success: true }            |
+  | &lt;---------------------------- |</code></pre>
+
+  <div class="callout callout-warn">
+    <strong>Security notes:</strong>
+    <ul style="margin-bottom:0;">
+      <li>If the email does not exist, <code>forgot-password</code> still returns success (prevents email enumeration)</li>
+      <li>The reset token is a concatenation of two UUID v4 values (64 hex characters)</li>
+      <li>The token expires after 30 minutes</li>
+      <li>After successful password reset, the token is cleared and cannot be reused</li>
+      <li>In the current implementation, the reset token is returned directly in the API response (suitable for development; in production, it would typically be sent via email)</li>
+    </ul>
+  </div>
+
+  <h2>Request Guards</h2>
+  <p>Request guards are Rocket's mechanism for extracting and validating data from incoming requests before the route handler runs. The Teamder backend defines four guards:</p>
+
+  <h3>AuthUser</h3>
+  <p><strong>Purpose</strong>: Requires a valid JWT token. Extracts the authenticated user's ID.</p>
+  <h4>Extraction</h4>
+  <ol>
+    <li>Read the <code>Authorization</code> header</li>
+    <li>Strip the <code>Bearer </code> prefix</li>
+    <li>Verify the JWT signature and expiry using the <code>JWT_SECRET</code></li>
+    <li>Extract the <code>sub</code> claim as <code>user_id</code></li>
+  </ol>
+  <p><strong>Usage</strong>: Any route that requires authentication.</p>
+  <pre><code>#[rocket::get("/users/me")]
+pub async fn get_me(auth: AuthUser) -&gt; ... {
+    // auth.user_id is the authenticated user's ID
+}</code></pre>
+  <p><strong>Failure</strong>: Returns 401 Unauthorized if the header is missing, the token is invalid, or the token has expired.</p>
+
+  <h3>OptionalAuth</h3>
+  <p><strong>Purpose</strong>: Extracts the authenticated user's ID if a valid token is present, but does not require authentication.</p>
+  <p><strong>Extraction</strong>: Same as AuthUser, but returns <code>OptionalAuth(None)</code> instead of an error when the token is missing or invalid.</p>
+  <p><strong>Usage</strong>: Routes that behave differently for authenticated vs. anonymous users (e.g., computing match scores, showing viewer-specific state).</p>
+  <pre><code>#[rocket::get("/users/&lt;id&gt;")]
+pub async fn get_user(viewer: OptionalAuth) -&gt; ... {
+    // viewer.0 is Some(user_id) if authenticated, None otherwise
+}</code></pre>
+  <p><strong>Failure</strong>: Never fails. Always succeeds with <code>None</code> if authentication is absent or invalid.</p>
+
+  <h3>AdminUser</h3>
+  <p><strong>Purpose</strong>: Requires a valid JWT token AND the user must have <code>is_admin: true</code> in the database.</p>
+  <h4>Extraction</h4>
+  <ol>
+    <li>Verify the JWT (same as AuthUser)</li>
+    <li>Fetch the user document from the database</li>
+    <li>Check <code>user.is_admin == true</code></li>
+  </ol>
+  <p><strong>Usage</strong>: Admin-only routes (dashboard, user management, skill CRUD, competition approval).</p>
+  <pre><code>#[rocket::get("/admin/stats")]
+pub async fn stats(_admin: AdminUser) -&gt; ... { ... }</code></pre>
+  <p><strong>Failure</strong>:</p>
+  <ul>
+    <li>401 Unauthorized if the token is invalid</li>
+    <li>403 Forbidden if the user is not an admin</li>
+  </ul>
+
+  <h3>PublisherUser</h3>
+  <p><strong>Purpose</strong>: Requires a valid JWT token AND the user must have <code>is_publisher: true</code> OR <code>is_admin: true</code>.</p>
+  <h4>Extraction</h4>
+  <ol>
+    <li>Verify the JWT (same as AuthUser)</li>
+    <li>Fetch the user document from the database</li>
+    <li>Check <code>user.is_publisher || user.is_admin</code></li>
+  </ol>
+  <p><strong>Usage</strong>: Publisher routes (creating/editing competitions, viewing registrations).</p>
+  <pre><code>#[rocket::post("/competitions")]
+pub async fn create_competition(auth: PublisherUser) -&gt; ... { ... }</code></pre>
+  <p><strong>Failure</strong>:</p>
+  <ul>
+    <li>401 Unauthorized if the token is invalid</li>
+    <li>403 Forbidden if the user is neither a publisher nor an admin</li>
+  </ul>
+
+  <h2>Role-Based Access Summary</h2>
+  <table>
+    <thead><tr><th>Role</th><th>Flag</th><th>Capabilities</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Regular user</strong></td><td>(default)</td><td>Register, login, create/join projects and study groups, send invites, submit reviews, chat, bookmark</td></tr>
+      <tr><td><strong>Publisher</strong></td><td><code>is_publisher: true</code></td><td>All user capabilities + create/edit competitions, view registrations, submit for review</td></tr>
+      <tr><td><strong>Admin</strong></td><td><code>is_admin: true</code></td><td>All publisher capabilities + approve/reject competitions, manage users (promote/demote/delete), manage skills, view admin dashboard, export data</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Promotion</strong>: Admin status and publisher status are toggled by existing admins via <code>POST /admin/users/&lt;id&gt;/promote</code> and <code>POST /admin/users/&lt;id&gt;/publisher</code>.</p>
+
+  <h2>Security Considerations</h2>
+  <ol>
+    <li><strong>JWT Secret</strong>: The <code>JWT_SECRET</code> must be a strong, random value in production. A weak secret allows token forgery.</li>
+    <li><strong>bcrypt Cost</strong>: The cost factor is 12, which provides a good balance between security and performance. Each hash operation takes approximately 200-400ms.</li>
+    <li><strong>No Token Revocation</strong>: There is no mechanism to invalidate a token before expiry. If a user's account is compromised, the token remains valid for up to 30 days. Consider implementing a token blacklist or shorter expiry for production use.</li>
+    <li><strong>Password in Update</strong>: The PATCH <code>/users/&lt;id&gt;</code> endpoint accepts a <code>password</code> field, which re-hashes and updates the password. This is separate from the <code>change-password</code> endpoint (which requires the old password).</li>
+    <li><strong>CORS</strong>: The server only accepts requests from whitelisted origins. See <a href="architecture.html">Architecture</a> for the full list.</li>
+    <li><strong>WebSocket Auth</strong>: The WebSocket endpoint at <code>/chat/ws</code> accepts the JWT as a query parameter (<code>?token=&lt;jwt&gt;</code>) because the browser WebSocket API does not support custom headers. This means the token may appear in server access logs.</li>
+  </ol>
+
+</div>
+</body>
+</html>

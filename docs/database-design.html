@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Database Design — Teamder Backend Docs</title>
+<style>
+  :root {
+    --c-peach: #DD6E42;
+    --c-peach-dark: #B85530;
+    --c-slate: #4F6D7A;
+    --c-slate-dark: #2C3E45;
+    --c-beige: #E8DAB2;
+    --c-sky: #C0D6DF;
+    --c-sky-light: #DCE8EE;
+    --c-paper: #FAF7F0;
+    --c-ink: #1F2A2F;
+    --c-mute: #8A99A0;
+    --c-success: #3D9970;
+    --c-warning: #E6A817;
+    --c-danger: #C0392B;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--c-paper);
+    color: var(--c-ink);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .sidebar {
+    position: fixed; top: 0; left: 0;
+    width: 260px; height: 100vh;
+    background: var(--c-slate-dark); color: #fff;
+    overflow-y: auto; padding: 24px 0; z-index: 100;
+  }
+  .sidebar .logo {
+    font-size: 20px; font-weight: 700;
+    padding: 0 20px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    margin-bottom: 16px;
+  }
+  .sidebar .logo span { color: var(--c-peach); }
+  .sidebar .section-title {
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.12em; padding: 12px 20px 4px;
+    color: var(--c-peach); font-weight: 600;
+  }
+  .sidebar a {
+    display: block; color: rgba(255,255,255,0.7);
+    text-decoration: none; padding: 5px 20px 5px 24px;
+    font-size: 13px; border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  .sidebar a:hover, .sidebar a.active {
+    color: #fff; background: rgba(255,255,255,0.05);
+    border-left-color: var(--c-peach);
+  }
+  .sidebar a.active { font-weight: 600; }
+  .sidebar .divider {
+    height: 1px; background: rgba(255,255,255,0.08);
+    margin: 12px 20px;
+  }
+  .main {
+    margin-left: 260px; max-width: 900px;
+    padding: 40px 48px 120px;
+  }
+  h1 {
+    font-size: 30px; font-weight: 700;
+    color: var(--c-slate-dark); margin-bottom: 8px;
+    letter-spacing: -0.03em;
+  }
+  .subtitle { font-size: 15px; color: var(--c-mute); margin-bottom: 32px; }
+  h2 {
+    font-size: 21px; font-weight: 700; color: var(--c-slate-dark);
+    margin: 40px 0 14px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--c-peach);
+  }
+  h3 { font-size: 16px; font-weight: 600; color: var(--c-slate); margin: 24px 0 8px; }
+  h4 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 16px 0 6px; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 0 0 14px 24px; }
+  li { margin-bottom: 4px; }
+  a { color: var(--c-peach-dark); }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 20px; font-size: 13.5px; }
+  th {
+    background: var(--c-slate-dark); color: #fff;
+    text-align: left; padding: 8px 12px;
+    font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  td { padding: 7px 12px; border-bottom: 1px solid rgba(79,109,122,0.1); vertical-align: top; }
+  tr:hover td { background: rgba(192,214,223,0.15); }
+  code {
+    background: rgba(79,109,122,0.08); padding: 1px 5px;
+    border-radius: 3px; font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 13px; color: var(--c-slate-dark);
+  }
+  pre {
+    background: var(--c-slate-dark); color: #e0e8ec;
+    padding: 16px 20px; border-radius: 8px;
+    overflow-x: auto; margin: 10px 0 18px;
+    font-size: 13px; line-height: 1.6;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+  .callout {
+    padding: 14px 18px; border-radius: 8px;
+    margin: 14px 0; font-size: 14px;
+  }
+  .callout-info { background: rgba(192,214,223,0.3); border-left: 4px solid var(--c-slate); }
+  .callout-warn { background: rgba(230,168,23,0.1); border-left: 4px solid var(--c-warning); }
+  .callout-success { background: rgba(61,153,112,0.08); border-left: 4px solid var(--c-success); }
+  .callout-danger { background: rgba(192,57,43,0.08); border-left: 4px solid var(--c-danger); }
+  .callout strong { display: block; margin-bottom: 4px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; vertical-align: middle;
+  }
+  .badge-get { background: var(--c-sky); color: var(--c-slate-dark); }
+  .badge-post { background: var(--c-success); color: #fff; }
+  .badge-patch { background: var(--c-warning); color: #fff; }
+  .badge-delete { background: var(--c-danger); color: #fff; }
+  .badge-ws { background: var(--c-slate); color: #fff; }
+  @media (max-width: 860px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px 20px 80px; }
+  }
+  @media print {
+    .sidebar { display: none; }
+    .main { margin-left: 0; max-width: 100%; padding: 20px; }
+  }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <div class="logo"><span>T</span>eamder API</div>
+  <div class="section-title">Documentation</div>
+  <a href="README.html">Overview</a>
+  <a href="getting-started.html">Getting Started</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="api-reference.html">API Reference</a>
+  <a href="database-design.html" class="active">Database Design</a>
+  <a href="authentication.html">Authentication</a>
+  <a href="deployment.html">Deployment</a>
+</nav>
+<div class="main">
+
+  <h1>Database Design</h1>
+  <p class="subtitle">MongoDB collections, field-level detail, and design rationale for all 14 collections.</p>
+
+  <div class="callout callout-info">
+    <strong>Conventions:</strong>
+    <ul style="margin-bottom:0;">
+      <li>All <code>_id</code> fields are UUID v4 strings (not MongoDB ObjectId)</li>
+      <li>Timestamps are stored as BSON DateTime (ISO 8601 in JSON)</li>
+      <li>Embedded arrays are used for data that is always read with the parent document</li>
+      <li>Separate collections are used for unbounded or independently queried data</li>
+      <li>Denormalized names (e.g., <code>author_name</code>) avoid cross-collection lookups at read time</li>
+    </ul>
+  </div>
+
+  <h2>Collection Overview</h2>
+  <table>
+    <thead>
+      <tr><th>Collection</th><th>Description</th><th>Approx. Growth</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>users</code></td><td>User accounts and profiles</td><td>One per registered user</td></tr>
+      <tr><td><code>projects</code></td><td>Collaborative projects</td><td>Created by users</td></tr>
+      <tr><td><code>competitions</code></td><td>Competitions published by publishers</td><td>Publisher-created, admin-approved</td></tr>
+      <tr><td><code>competition_teams</code></td><td>Teams formed for competitions</td><td>User-created</td></tr>
+      <tr><td><code>study_groups</code></td><td>Study groups with check-ins and notes</td><td>User-created</td></tr>
+      <tr><td><code>invites</code></td><td>Direct invites to join entities</td><td>One per invite sent</td></tr>
+      <tr><td><code>join_requests</code></td><td>Applications to join entities</td><td>One per application</td></tr>
+      <tr><td><code>peer_reviews</code></td><td>Peer reviews between collaborators</td><td>One per review</td></tr>
+      <tr><td><code>notifications</code></td><td>In-app notifications</td><td>System-generated</td></tr>
+      <tr><td><code>messages</code></td><td>Direct messages between users</td><td>One per message</td></tr>
+      <tr><td><code>bookmarks</code></td><td>User bookmarks of entities</td><td>One per bookmark</td></tr>
+      <tr><td><code>skill_categories</code></td><td>Skill category definitions</td><td>Admin-managed, seeded on startup</td></tr>
+      <tr><td><code>skill_tags</code></td><td>Individual skill tag definitions</td><td>Admin-managed, seeded on startup</td></tr>
+      <tr><td><code>project_updates</code></td><td>Status updates posted to projects</td><td>Team-member-created</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============================================================ -->
+  <h2>users</h2>
+  <p>User accounts, profiles, skills, portfolio, and cached reviews.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>email</code></td><td>String</td><td>--</td><td>Unique email address</td></tr>
+      <tr><td><code>password_hash</code></td><td>String</td><td>--</td><td>bcrypt hash (cost 12)</td></tr>
+      <tr><td><code>name</code></td><td>String</td><td>--</td><td>Display name</td></tr>
+      <tr><td><code>initials</code></td><td>String</td><td><code>""</code></td><td>Auto-generated from name (e.g., "JD")</td></tr>
+      <tr><td><code>role</code></td><td>String</td><td><code>""</code></td><td>Self-described role (e.g., "Frontend Developer")</td></tr>
+      <tr><td><code>department</code></td><td>String</td><td><code>""</code></td><td>Academic department</td></tr>
+      <tr><td><code>university</code></td><td>String</td><td><code>"Fu Jen Catholic University"</code></td><td>University name</td></tr>
+      <tr><td><code>year</code></td><td>String</td><td><code>"N/A"</code></td><td>Academic year</td></tr>
+      <tr><td><code>location</code></td><td>String?</td><td><code>null</code></td><td>Location/city</td></tr>
+      <tr><td><code>bio</code></td><td>[String]</td><td><code>[]</code></td><td>Multi-paragraph biography</td></tr>
+      <tr><td><code>skills</code></td><td>[Skill]</td><td><code>[]</code></td><td>Skills with levels: <code>{ name: String, level: u8 (0-100) }</code></td></tr>
+      <tr><td><code>skill_tags</code></td><td>[String]</td><td><code>[]</code></td><td>Flat list of skill names for matching</td></tr>
+      <tr><td><code>gradient</code></td><td>String</td><td><code>""</code></td><td>CSS gradient string for avatar background</td></tr>
+      <tr><td><code>work_mode</code></td><td>String?</td><td><code>null</code></td><td>"remote", "hybrid", "on_site"</td></tr>
+      <tr><td><code>availability</code></td><td>String?</td><td><code>null</code></td><td>"open_for_collab", "busy", "unavailable"</td></tr>
+      <tr><td><code>hours_per_week</code></td><td>String?</td><td><code>null</code></td><td>Available hours per week</td></tr>
+      <tr><td><code>languages</code></td><td>[String]</td><td><code>["Chinese", "English"]</code></td><td>Spoken languages</td></tr>
+      <tr><td><code>portfolio</code></td><td>[PortfolioItem]</td><td><code>[]</code></td><td><code>{ title, kind, description?, url? }</code></td></tr>
+      <tr><td><code>reviews</code></td><td>[CachedReview]</td><td><code>[]</code></td><td>Denormalized review summaries</td></tr>
+      <tr><td><code>match_score</code></td><td>u8?</td><td><code>null</code></td><td>Computed at read time, not persisted</td></tr>
+      <tr><td><code>rating</code></td><td>f32</td><td><code>0.0</code></td><td>Average peer review rating (recalculated on review)</td></tr>
+      <tr><td><code>projects_done</code></td><td>u32</td><td><code>0</code></td><td>Completed project count</td></tr>
+      <tr><td><code>collaborations</code></td><td>u32</td><td><code>0</code></td><td>Total collaboration count</td></tr>
+      <tr><td><code>avatar_url</code></td><td>String?</td><td><code>null</code></td><td>Path to uploaded avatar</td></tr>
+      <tr><td><code>resume_url</code></td><td>String?</td><td><code>null</code></td><td>Path to uploaded resume</td></tr>
+      <tr><td><code>reset_token</code></td><td>String?</td><td><code>null</code></td><td>Password reset token (64-char hex)</td></tr>
+      <tr><td><code>reset_token_expires_at</code></td><td>DateTime?</td><td><code>null</code></td><td>Reset token expiry (30 min from creation)</td></tr>
+      <tr><td><code>is_admin</code></td><td>bool</td><td><code>false</code></td><td>Admin privilege flag</td></tr>
+      <tr><td><code>is_publisher</code></td><td>bool</td><td><code>false</code></td><td>Publisher privilege flag</td></tr>
+      <tr><td><code>is_public</code></td><td>bool</td><td><code>true</code></td><td>Profile visibility</td></tr>
+      <tr><td><code>onboarded</code></td><td>bool</td><td><code>false</code></td><td>Whether user completed onboarding</td></tr>
+      <tr><td><code>headline</code></td><td>String?</td><td><code>null</code></td><td>Short tagline</td></tr>
+      <tr><td><code>notify_email</code></td><td>bool</td><td><code>true</code></td><td>Email notification preference</td></tr>
+      <tr><td><code>notify_in_app</code></td><td>bool</td><td><code>true</code></td><td>In-app notification preference</td></tr>
+      <tr><td><code>social_links</code></td><td>[SocialLink]</td><td><code>[]</code></td><td><code>{ label, url }</code></td></tr>
+      <tr><td><code>interests</code></td><td>[String]</td><td><code>[]</code></td><td>Interest tags</td></tr>
+      <tr><td><code>timezone</code></td><td>String?</td><td><code>null</code></td><td>User's timezone</td></tr>
+      <tr><td><code>goals</code></td><td>String?</td><td><code>null</code></td><td>Career/academic goals</td></tr>
+      <tr><td><code>free_days</code></td><td>[String]</td><td><code>[]</code></td><td>Days available for collaboration</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Account creation time</td></tr>
+      <tr><td><code>updated_at</code></td><td>DateTime</td><td>--</td><td>Last profile update time</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Indexes</strong>: Unique index on <code>email</code>. Text index on <code>name</code> and <code>email</code> for search.</p>
+  <h4>Sub-types</h4>
+  <ul>
+    <li><strong>Skill</strong>: <code>{ name: String, level: u8 }</code></li>
+    <li><strong>PortfolioItem</strong>: <code>{ title: String, kind: String, description?: String, url?: String }</code></li>
+    <li><strong>SocialLink</strong>: <code>{ label: String, url: String }</code></li>
+    <li><strong>CachedReview</strong>: <code>{ reviewer_id, reviewer_name, project_name, stars: u8, body, created_at }</code></li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2>projects</h2>
+  <p>Collaborative projects with team management and role tracking.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>name</code></td><td>String</td><td>--</td><td>Project name</td></tr>
+      <tr><td><code>lead_user_id</code></td><td>String</td><td>--</td><td>ID of the project lead</td></tr>
+      <tr><td><code>icon</code></td><td>String</td><td><code>"Pr"</code></td><td>Display icon text</td></tr>
+      <tr><td><code>icon_bg</code></td><td>String</td><td><code>""</code></td><td>Icon background color</td></tr>
+      <tr><td><code>status</code></td><td>String</td><td><code>"recruiting"</code></td><td>"recruiting", "active", "completed"</td></tr>
+      <tr><td><code>description</code></td><td>String</td><td><code>""</code></td><td>Project description</td></tr>
+      <tr><td><code>goals</code></td><td>String?</td><td><code>null</code></td><td>Project goals</td></tr>
+      <tr><td><code>roles</code></td><td>[ProjectRole]</td><td><code>[]</code></td><td><code>{ name, count_needed: u8, filled: u8 }</code></td></tr>
+      <tr><td><code>skills</code></td><td>[String]</td><td><code>[]</code></td><td>Required skill tags</td></tr>
+      <tr><td><code>team</code></td><td>[TeamMember]</td><td><code>[]</code></td><td>Current team members</td></tr>
+      <tr><td><code>deadline</code></td><td>String?</td><td><code>null</code></td><td>Project deadline</td></tr>
+      <tr><td><code>collab</code></td><td>String?</td><td><code>null</code></td><td>Collaboration style</td></tr>
+      <tr><td><code>duration</code></td><td>String?</td><td><code>null</code></td><td>Expected duration</td></tr>
+      <tr><td><code>category</code></td><td>String?</td><td><code>null</code></td><td>Project category</td></tr>
+      <tr><td><code>is_public</code></td><td>bool</td><td><code>true</code></td><td>Public visibility</td></tr>
+      <tr><td><code>join_mode</code></td><td>String</td><td><code>"direct"</code></td><td>"direct" or "application"</td></tr>
+      <tr><td><code>is_promoted</code></td><td>bool</td><td><code>false</code></td><td>Admin-promoted flag</td></tr>
+      <tr><td><code>banner_image</code></td><td>String?</td><td><code>null</code></td><td>Banner image URL</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Creation time</td></tr>
+      <tr><td><code>updated_at</code></td><td>DateTime</td><td>--</td><td>Last update time</td></tr>
+    </tbody>
+  </table>
+  <h4>Sub-types</h4>
+  <ul>
+    <li><strong>ProjectRole</strong>: <code>{ name: String, count_needed: u8, filled: u8 }</code></li>
+    <li><strong>TeamMember</strong>: <code>{ user_id, initials, color, joined_at: DateTime, role?: String }</code></li>
+  </ul>
+  <p><strong>Auto-activation</strong>: When a join request is accepted and all roles reach <code>filled &gt;= count_needed</code>, the project status auto-transitions from "recruiting" to "active".</p>
+
+  <!-- ============================================================ -->
+  <h2>competitions</h2>
+  <p>Competitions published by publishers, approved by admins.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>name</code></td><td>String</td><td>--</td><td>Competition name</td></tr>
+      <tr><td><code>organizer</code></td><td>String</td><td>--</td><td>Organizing entity name</td></tr>
+      <tr><td><code>icon</code></td><td>String</td><td><code>"Cp"</code></td><td>Display icon text</td></tr>
+      <tr><td><code>icon_bg</code></td><td>String</td><td><code>""</code></td><td>Icon background color</td></tr>
+      <tr><td><code>status</code></td><td>String</td><td><code>"open"</code></td><td>"open", "closed", "completed"</td></tr>
+      <tr><td><code>prize</code></td><td>String</td><td><code>""</code></td><td>Prize description</td></tr>
+      <tr><td><code>team_size_min</code></td><td>u8</td><td><code>2</code></td><td>Minimum team size</td></tr>
+      <tr><td><code>team_size_max</code></td><td>u8</td><td><code>5</code></td><td>Maximum team size</td></tr>
+      <tr><td><code>deadline</code></td><td>String?</td><td><code>null</code></td><td>Registration deadline</td></tr>
+      <tr><td><code>duration</code></td><td>String</td><td><code>""</code></td><td>Competition duration</td></tr>
+      <tr><td><code>tags</code></td><td>[String]</td><td><code>[]</code></td><td>Topic tags</td></tr>
+      <tr><td><code>description</code></td><td>String</td><td><code>""</code></td><td>Full description</td></tr>
+      <tr><td><code>is_featured</code></td><td>bool</td><td><code>false</code></td><td>Featured on homepage</td></tr>
+      <tr><td><code>banner_image</code></td><td>String?</td><td><code>null</code></td><td>Banner image URL</td></tr>
+      <tr><td><code>publish_status</code></td><td>String</td><td><code>"published"</code></td><td>"draft", "pending_review", "published", "rejected"</td></tr>
+      <tr><td><code>publisher_id</code></td><td>String?</td><td><code>null</code></td><td>ID of the publishing user</td></tr>
+      <tr><td><code>rejected_note</code></td><td>String?</td><td><code>null</code></td><td>Admin rejection reason</td></tr>
+      <tr><td><code>registrations</code></td><td>[Registration]</td><td><code>[]</code></td><td>Embedded registrations</td></tr>
+      <tr><td><code>interested_user_ids</code></td><td>[String]</td><td><code>[]</code></td><td>User IDs who expressed interest</td></tr>
+      <tr><td><code>winners</code></td><td>[String]</td><td><code>[]</code></td><td>Winner user IDs</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Creation time</td></tr>
+      <tr><td><code>updated_at</code></td><td>DateTime</td><td>--</td><td>Last update time</td></tr>
+    </tbody>
+  </table>
+  <h4>Sub-types</h4>
+  <ul>
+    <li><strong>Registration</strong>: <code>{ user_id, team_name?, registered_at: DateTime, motivation?, skills?: [String], contact_email? }</code></li>
+  </ul>
+  <p><strong>Publishing workflow</strong>: draft &rarr; pending_review (publisher submits) &rarr; published (admin approves) / rejected (admin rejects with note).</p>
+
+  <!-- ============================================================ -->
+  <h2>competition_teams</h2>
+  <p>Teams formed by users within a competition.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>competition_id</code></td><td>String</td><td>--</td><td>Reference to competition</td></tr>
+      <tr><td><code>competition_name</code></td><td>String</td><td>--</td><td>Denormalized competition name</td></tr>
+      <tr><td><code>name</code></td><td>String</td><td>--</td><td>Team name</td></tr>
+      <tr><td><code>description</code></td><td>String</td><td><code>""</code></td><td>Team description</td></tr>
+      <tr><td><code>lead_user_id</code></td><td>String</td><td>--</td><td>Team lead user ID</td></tr>
+      <tr><td><code>members</code></td><td>[CompTeamMember]</td><td><code>[]</code></td><td>Team members</td></tr>
+      <tr><td><code>max_members</code></td><td>u8</td><td><code>5</code></td><td>Maximum member count</td></tr>
+      <tr><td><code>looking_for</code></td><td>[String]</td><td><code>[]</code></td><td>Skills the team is looking for</td></tr>
+      <tr><td><code>open_roles</code></td><td>[String]</td><td><code>[]</code></td><td>Open role names</td></tr>
+      <tr><td><code>status</code></td><td>String</td><td><code>"recruiting"</code></td><td>"recruiting", "full"</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Creation time</td></tr>
+      <tr><td><code>updated_at</code></td><td>DateTime</td><td>--</td><td>Last update time</td></tr>
+    </tbody>
+  </table>
+  <h4>Sub-types</h4>
+  <ul>
+    <li><strong>CompTeamMember</strong>: <code>{ user_id, name, initials, role?: String, joined_at: DateTime }</code></li>
+  </ul>
+  <p><strong>Auto-full</strong>: When <code>members.len() &gt;= max_members</code>, status is auto-set to "full".</p>
+
+  <!-- ============================================================ -->
+  <h2>study_groups</h2>
+  <p>Study groups with check-in tracking, shared notes, and weekly progress.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>name</code></td><td>String</td><td>--</td><td>Group name</td></tr>
+      <tr><td><code>goal</code></td><td>String</td><td><code>""</code></td><td>Study goal</td></tr>
+      <tr><td><code>icon</code></td><td>String</td><td><code>"Sg"</code></td><td>Display icon text</td></tr>
+      <tr><td><code>icon_bg</code></td><td>String</td><td><code>""</code></td><td>Icon background color</td></tr>
+      <tr><td><code>subject</code></td><td>String</td><td><code>"General"</code></td><td>Subject area</td></tr>
+      <tr><td><code>tags</code></td><td>[String]</td><td><code>[]</code></td><td>Topic tags</td></tr>
+      <tr><td><code>members</code></td><td>[GroupMember]</td><td><code>[]</code></td><td>Group members with check-in data</td></tr>
+      <tr><td><code>max_members</code></td><td>u8</td><td><code>6</code></td><td>Maximum member count</td></tr>
+      <tr><td><code>schedule</code></td><td>String</td><td><code>""</code></td><td>Meeting schedule</td></tr>
+      <tr><td><code>duration_weeks</code></td><td>u8</td><td><code>0</code></td><td>Planned duration in weeks</td></tr>
+      <tr><td><code>current_week</code></td><td>u8</td><td><code>1</code></td><td>Current progress week</td></tr>
+      <tr><td><code>is_open</code></td><td>bool</td><td><code>true</code></td><td>Open for new members</td></tr>
+      <tr><td><code>status</code></td><td>String</td><td><code>"active"</code></td><td>"active", "completed"</td></tr>
+      <tr><td><code>join_mode</code></td><td>String</td><td><code>"direct"</code></td><td>"direct" or "application"</td></tr>
+      <tr><td><code>banner_image</code></td><td>String?</td><td><code>null</code></td><td>Banner image URL</td></tr>
+      <tr><td><code>notes</code></td><td>[StudyNote]</td><td><code>[]</code></td><td>Shared study notes</td></tr>
+      <tr><td><code>description</code></td><td>String?</td><td><code>null</code></td><td>Group description</td></tr>
+      <tr><td><code>created_by</code></td><td>String</td><td>--</td><td>Creator user ID</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Creation time</td></tr>
+      <tr><td><code>updated_at</code></td><td>DateTime</td><td>--</td><td>Last update time</td></tr>
+    </tbody>
+  </table>
+  <h4>Sub-types</h4>
+  <ul>
+    <li><strong>GroupMember</strong>: <code>{ user_id, initials, color, joined_at: DateTime, last_checkin?: DateTime, streak: u32 }</code></li>
+    <li><strong>StudyNote</strong>: <code>{ id: String, author_id, author_name, title, body, created_at: DateTime }</code></li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2>invites</h2>
+  <p>Direct invitations from one user to another to join a project, study group, or competition team.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>from_user_id</code></td><td>String</td><td>--</td><td>Sender user ID</td></tr>
+      <tr><td><code>to_user_id</code></td><td>String</td><td>--</td><td>Recipient user ID</td></tr>
+      <tr><td><code>project_id</code></td><td>String?</td><td><code>null</code></td><td>Target project (if applicable)</td></tr>
+      <tr><td><code>study_group_id</code></td><td>String?</td><td><code>null</code></td><td>Target study group (if applicable)</td></tr>
+      <tr><td><code>competition_team_id</code></td><td>String?</td><td><code>null</code></td><td>Target competition team (if applicable)</td></tr>
+      <tr><td><code>message</code></td><td>String?</td><td><code>null</code></td><td>Personal message</td></tr>
+      <tr><td><code>status</code></td><td>String</td><td><code>"pending"</code></td><td>"pending", "accepted", "declined"</td></tr>
+      <tr><td><code>is_read</code></td><td>bool</td><td><code>false</code></td><td>Whether the recipient has read it</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Creation time</td></tr>
+      <tr><td><code>expires_at</code></td><td>DateTime</td><td>--</td><td>Expiration time (7 days from creation)</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Constraints</strong>: Only one pending invite between the same sender-recipient pair for the same entity at a time (enforced at application level).</p>
+
+  <!-- ============================================================ -->
+  <h2>join_requests</h2>
+  <p>Applications from users to join projects, study groups, or competition teams. Supports a rich application form with detailed fields.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>from_user_id</code></td><td>String</td><td>--</td><td>Applicant user ID</td></tr>
+      <tr><td><code>entity_type</code></td><td>String</td><td>--</td><td>"project", "study_group", or "competition_team"</td></tr>
+      <tr><td><code>entity_id</code></td><td>String</td><td>--</td><td>Target entity ID</td></tr>
+      <tr><td><code>entity_name</code></td><td>String</td><td><code>""</code></td><td>Denormalized entity name</td></tr>
+      <tr><td><code>owner_id</code></td><td>String</td><td>--</td><td>Entity owner user ID</td></tr>
+      <tr><td><code>message</code></td><td>String?</td><td><code>null</code></td><td>Cover message</td></tr>
+      <tr><td><code>status</code></td><td>String</td><td><code>"pending"</code></td><td>"pending", "accepted", "declined"</td></tr>
+      <tr><td><code>motivation</code></td><td>String?</td><td><code>null</code></td><td>Why the user wants to join</td></tr>
+      <tr><td><code>role_wanted</code></td><td>String?</td><td><code>null</code></td><td>Which role the user is applying for</td></tr>
+      <tr><td><code>hours_per_week</code></td><td>String?</td><td><code>null</code></td><td>Time commitment</td></tr>
+      <tr><td><code>portfolio_url</code></td><td>String?</td><td><code>null</code></td><td>Portfolio link</td></tr>
+      <tr><td><code>relevant_experience</code></td><td>String?</td><td><code>null</code></td><td>Relevant experience description</td></tr>
+      <tr><td><code>availability_start</code></td><td>String?</td><td><code>null</code></td><td>When the user can start</td></tr>
+      <tr><td><code>can_meet_in_person</code></td><td>bool?</td><td><code>null</code></td><td>In-person meeting preference</td></tr>
+      <tr><td><code>additional_links</code></td><td>[String]</td><td><code>[]</code></td><td>Extra links (GitHub, LinkedIn, etc.)</td></tr>
+      <tr><td><code>comm_channels</code></td><td>[String]</td><td><code>[]</code></td><td>Preferred communication channels</td></tr>
+      <tr><td><code>timezone</code></td><td>String?</td><td><code>null</code></td><td>Applicant's timezone</td></tr>
+      <tr><td><code>agreed_to_coc</code></td><td>bool</td><td><code>false</code></td><td>Agreed to code of conduct</td></tr>
+      <tr><td><code>skill_confidence</code></td><td>[String]</td><td><code>[]</code></td><td>Skills the applicant is confident in</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Submission time</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Constraints</strong>: Only one pending request per user per entity at a time (enforced at application level).</p>
+
+  <!-- ============================================================ -->
+  <h2>peer_reviews</h2>
+  <p>Multi-dimensional peer reviews submitted after collaborating on a project or study group.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>reviewer_id</code></td><td>String</td><td>--</td><td>Reviewer user ID</td></tr>
+      <tr><td><code>reviewer_name</code></td><td>String</td><td>--</td><td>Denormalized reviewer name</td></tr>
+      <tr><td><code>reviewee_id</code></td><td>String</td><td>--</td><td>Reviewed user ID</td></tr>
+      <tr><td><code>project_id</code></td><td>String?</td><td><code>null</code></td><td>Associated project (if applicable)</td></tr>
+      <tr><td><code>study_group_id</code></td><td>String?</td><td><code>null</code></td><td>Associated study group (if applicable)</td></tr>
+      <tr><td><code>project_name</code></td><td>String</td><td><code>""</code></td><td>Denormalized project/group name</td></tr>
+      <tr><td><code>scores</code></td><td>ReviewScores</td><td>--</td><td>Multi-dimensional scores</td></tr>
+      <tr><td><code>body</code></td><td>String</td><td><code>""</code></td><td>Written review text</td></tr>
+      <tr><td><code>endorsed_skills</code></td><td>[String]</td><td><code>[]</code></td><td>Skills endorsed by the reviewer</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Review submission time</td></tr>
+    </tbody>
+  </table>
+  <h4>Sub-types</h4>
+  <ul>
+    <li><strong>ReviewScores</strong>: <code>{ skill: u8, communication: u8, reliability: u8, teamwork: u8 }</code> (each 1-5)</li>
+    <li><strong>average()</strong>: <code>(skill + communication + reliability + teamwork) / 4.0</code></li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2>notifications</h2>
+  <p>In-app notifications generated by system events.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>user_id</code></td><td>String</td><td>--</td><td>Recipient user ID</td></tr>
+      <tr><td><code>kind</code></td><td>String</td><td>--</td><td>Notification type (see below)</td></tr>
+      <tr><td><code>title</code></td><td>String</td><td>--</td><td>Notification title</td></tr>
+      <tr><td><code>body</code></td><td>String</td><td><code>""</code></td><td>Notification body text</td></tr>
+      <tr><td><code>link</code></td><td>String?</td><td><code>null</code></td><td>Deep link path</td></tr>
+      <tr><td><code>read</code></td><td>bool</td><td><code>false</code></td><td>Read status</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Creation time</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Kind values</strong>: <code>invite</code>, <code>invite_accepted</code>, <code>invite_declined</code>, <code>join_request</code>, <code>join_accepted</code>, <code>join_declined</code>, <code>review</code>, <code>message</code>, <code>project_update</code>, <code>competition_recommend</code>, <code>system</code></p>
+
+  <!-- ============================================================ -->
+  <h2>messages</h2>
+  <p>Direct messages between two users.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>from_user_id</code></td><td>String</td><td>--</td><td>Sender user ID</td></tr>
+      <tr><td><code>to_user_id</code></td><td>String</td><td>--</td><td>Recipient user ID</td></tr>
+      <tr><td><code>content</code></td><td>String</td><td>--</td><td>Message text</td></tr>
+      <tr><td><code>read</code></td><td>bool</td><td><code>false</code></td><td>Read status</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Send time</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Indexes</strong>: Compound index on <code>(from_user_id, to_user_id)</code> and <code>created_at</code> for conversation queries.</p>
+
+  <!-- ============================================================ -->
+  <h2>bookmarks</h2>
+  <p>User bookmarks of any entity type.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>user_id</code></td><td>String</td><td>--</td><td>Bookmarking user ID</td></tr>
+      <tr><td><code>kind</code></td><td>String</td><td>--</td><td>"user", "project", "competition", "study_group", "competition_team"</td></tr>
+      <tr><td><code>entity_id</code></td><td>String</td><td>--</td><td>Bookmarked entity ID</td></tr>
+      <tr><td><code>label</code></td><td>String</td><td><code>""</code></td><td>Optional display label</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Bookmark creation time</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Constraints</strong>: Unique on <code>(user_id, kind, entity_id)</code> at application level.</p>
+
+  <!-- ============================================================ -->
+  <h2>skill_categories</h2>
+  <p>Skill category definitions. Auto-seeded on first startup with 12 categories.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String</td><td>--</td><td>Category key (e.g., "frontend", "backend")</td></tr>
+      <tr><td><code>label</code></td><td>String</td><td>--</td><td>English label</td></tr>
+      <tr><td><code>label_zh</code></td><td>String</td><td>--</td><td>Traditional Chinese label</td></tr>
+      <tr><td><code>order</code></td><td>i32</td><td>--</td><td>Display order</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Creation time</td></tr>
+      <tr><td><code>updated_at</code></td><td>DateTime</td><td>--</td><td>Last update time</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Seeded categories</strong>: frontend, backend, mobile, database, devops, design, data, blockchain, pm, marketing, business, other</p>
+
+  <!-- ============================================================ -->
+  <h2>skill_tags</h2>
+  <p>Individual skill tag definitions, each belonging to a category. Auto-seeded on first startup with 60+ tags.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>name</code></td><td>String</td><td>--</td><td>English skill name</td></tr>
+      <tr><td><code>name_zh</code></td><td>String</td><td>--</td><td>Traditional Chinese skill name</td></tr>
+      <tr><td><code>category_key</code></td><td>String</td><td>--</td><td>Reference to skill_categories._id</td></tr>
+      <tr><td><code>order</code></td><td>i32</td><td>--</td><td>Display order within category</td></tr>
+      <tr><td><code>is_active</code></td><td>bool</td><td><code>true</code></td><td>Whether the tag is active/visible</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Creation time</td></tr>
+      <tr><td><code>updated_at</code></td><td>DateTime</td><td>--</td><td>Last update time</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============================================================ -->
+  <h2>project_updates</h2>
+  <p>Status updates, milestones, and announcements posted to projects by team members.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>_id</code></td><td>String (UUID)</td><td>--</td><td>Primary key</td></tr>
+      <tr><td><code>project_id</code></td><td>String</td><td>--</td><td>Parent project ID</td></tr>
+      <tr><td><code>author_id</code></td><td>String</td><td>--</td><td>Author user ID</td></tr>
+      <tr><td><code>author_name</code></td><td>String</td><td>--</td><td>Denormalized author name</td></tr>
+      <tr><td><code>kind</code></td><td>String</td><td>--</td><td>"progress", "milestone", "announcement", "help_wanted"</td></tr>
+      <tr><td><code>title</code></td><td>String</td><td>--</td><td>Update title</td></tr>
+      <tr><td><code>body</code></td><td>String</td><td><code>""</code></td><td>Update body text</td></tr>
+      <tr><td><code>created_at</code></td><td>DateTime</td><td>--</td><td>Post time</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============================================================ -->
+  <h2>Design Notes</h2>
+
+  <h3>ID Strategy</h3>
+  <p>All documents use UUID v4 strings as <code>_id</code> rather than MongoDB's native ObjectId. This provides:</p>
+  <ul>
+    <li>URL-safe identifiers without encoding</li>
+    <li>Consistent format across all collections</li>
+    <li>No dependency on MongoDB-specific types in the domain layer</li>
+  </ul>
+
+  <h3>Embedded vs. Referenced</h3>
+  <table>
+    <thead><tr><th>Pattern</th><th>Used For</th><th>Rationale</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Embedded array</strong></td><td>team members, registrations, notes, roles</td><td>Always read with parent; bounded size</td></tr>
+      <tr><td><strong>Separate collection</strong></td><td>messages, notifications, bookmarks, reviews</td><td>Unbounded growth; independently queried</td></tr>
+      <tr><td><strong>Denormalized field</strong></td><td>author_name, reviewer_name, entity_name</td><td>Avoids cross-collection lookups on reads</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Consistency Model</h3>
+  <p>There are no database-level transactions. Consistency is maintained at the application layer:</p>
+  <ul>
+    <li>When a join request is accepted, the handler updates the request status AND adds the member in the same async handler</li>
+    <li>When a review is created, the handler creates the review document AND updates the reviewee's cached rating</li>
+    <li>Notification creation is fire-and-forget (failures are silently ignored)</li>
+  </ul>
+
+  <h3>Response DTOs</h3>
+  <p>Each main collection has a corresponding Response type that strips sensitive fields:</p>
+  <ul>
+    <li><code>UserResponse</code> omits <code>password_hash</code>, <code>reset_token</code>, and <code>reset_token_expires_at</code></li>
+    <li><code>CompetitionResponse</code> adds computed fields (<code>registration_count</code>, <code>interested_count</code>, viewer-state booleans) and conditionally includes <code>registrations</code> based on viewer permissions</li>
+  </ul>
+
+</div>
+</body>
+</html>

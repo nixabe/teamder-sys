@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API Reference — Teamder Backend Docs</title>
+<style>
+  :root {
+    --c-peach: #DD6E42;
+    --c-peach-dark: #B85530;
+    --c-slate: #4F6D7A;
+    --c-slate-dark: #2C3E45;
+    --c-beige: #E8DAB2;
+    --c-sky: #C0D6DF;
+    --c-sky-light: #DCE8EE;
+    --c-paper: #FAF7F0;
+    --c-ink: #1F2A2F;
+    --c-mute: #8A99A0;
+    --c-success: #3D9970;
+    --c-warning: #E6A817;
+    --c-danger: #C0392B;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--c-paper);
+    color: var(--c-ink);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .sidebar {
+    position: fixed; top: 0; left: 0;
+    width: 260px; height: 100vh;
+    background: var(--c-slate-dark); color: #fff;
+    overflow-y: auto; padding: 24px 0; z-index: 100;
+  }
+  .sidebar .logo {
+    font-size: 20px; font-weight: 700;
+    padding: 0 20px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    margin-bottom: 16px;
+  }
+  .sidebar .logo span { color: var(--c-peach); }
+  .sidebar .section-title {
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.12em; padding: 12px 20px 4px;
+    color: var(--c-peach); font-weight: 600;
+  }
+  .sidebar a {
+    display: block; color: rgba(255,255,255,0.7);
+    text-decoration: none; padding: 5px 20px 5px 24px;
+    font-size: 13px; border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  .sidebar a:hover, .sidebar a.active {
+    color: #fff; background: rgba(255,255,255,0.05);
+    border-left-color: var(--c-peach);
+  }
+  .sidebar a.active { font-weight: 600; }
+  .sidebar .divider {
+    height: 1px; background: rgba(255,255,255,0.08);
+    margin: 12px 20px;
+  }
+  .main {
+    margin-left: 260px; max-width: 900px;
+    padding: 40px 48px 120px;
+  }
+  h1 {
+    font-size: 30px; font-weight: 700;
+    color: var(--c-slate-dark); margin-bottom: 8px;
+    letter-spacing: -0.03em;
+  }
+  .subtitle { font-size: 15px; color: var(--c-mute); margin-bottom: 32px; }
+  h2 {
+    font-size: 21px; font-weight: 700; color: var(--c-slate-dark);
+    margin: 40px 0 14px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--c-peach);
+  }
+  h3 { font-size: 16px; font-weight: 600; color: var(--c-slate); margin: 24px 0 8px; }
+  h4 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 16px 0 6px; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 0 0 14px 24px; }
+  li { margin-bottom: 4px; }
+  a { color: var(--c-peach-dark); }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 20px; font-size: 13.5px; }
+  th {
+    background: var(--c-slate-dark); color: #fff;
+    text-align: left; padding: 8px 12px;
+    font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  td { padding: 7px 12px; border-bottom: 1px solid rgba(79,109,122,0.1); vertical-align: top; }
+  tr:hover td { background: rgba(192,214,223,0.15); }
+  code {
+    background: rgba(79,109,122,0.08); padding: 1px 5px;
+    border-radius: 3px; font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 13px; color: var(--c-slate-dark);
+  }
+  pre {
+    background: var(--c-slate-dark); color: #e0e8ec;
+    padding: 16px 20px; border-radius: 8px;
+    overflow-x: auto; margin: 10px 0 18px;
+    font-size: 13px; line-height: 1.6;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+  .callout {
+    padding: 14px 18px; border-radius: 8px;
+    margin: 14px 0; font-size: 14px;
+  }
+  .callout-info { background: rgba(192,214,223,0.3); border-left: 4px solid var(--c-slate); }
+  .callout-warn { background: rgba(230,168,23,0.1); border-left: 4px solid var(--c-warning); }
+  .callout-success { background: rgba(61,153,112,0.08); border-left: 4px solid var(--c-success); }
+  .callout-danger { background: rgba(192,57,43,0.08); border-left: 4px solid var(--c-danger); }
+  .callout strong { display: block; margin-bottom: 4px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; vertical-align: middle;
+  }
+  .badge-get { background: var(--c-sky); color: var(--c-slate-dark); }
+  .badge-post { background: var(--c-success); color: #fff; }
+  .badge-patch { background: var(--c-warning); color: #fff; }
+  .badge-delete { background: var(--c-danger); color: #fff; }
+  .badge-ws { background: var(--c-slate); color: #fff; }
+  @media (max-width: 860px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px 20px 80px; }
+  }
+  @media print {
+    .sidebar { display: none; }
+    .main { margin-left: 0; max-width: 100%; padding: 20px; }
+  }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <div class="logo"><span>T</span>eamder API</div>
+  <div class="section-title">Documentation</div>
+  <a href="README.html">Overview</a>
+  <a href="getting-started.html">Getting Started</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="api-reference.html" class="active">API Reference</a>
+  <a href="database-design.html">Database Design</a>
+  <a href="authentication.html">Authentication</a>
+  <a href="deployment.html">Deployment</a>
+</nav>
+<div class="main">
+
+  <h1>API Reference</h1>
+  <p class="subtitle">All endpoints are mounted under <code>/api/v1</code>. Requests and responses use JSON unless otherwise noted.</p>
+
+  <div class="callout callout-info">
+    <strong>Auth levels:</strong>
+    <ul style="margin-bottom:0;">
+      <li><strong>None</strong> — no authentication required</li>
+      <li><strong>Bearer</strong> — requires <code>Authorization: Bearer &lt;token&gt;</code> header</li>
+      <li><strong>Admin</strong> — requires Bearer token + user must have <code>is_admin: true</code></li>
+      <li><strong>Publisher</strong> — requires Bearer token + user must have <code>is_publisher: true</code> OR <code>is_admin: true</code></li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2>Health</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/health</code></td><td>None</td><td>Returns server status</td></tr>
+    </tbody>
+  </table>
+  <h4>Response</h4>
+  <pre><code>{ "status": "ok" }</code></pre>
+
+  <!-- ============================================================ -->
+  <h2>Auth</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/auth/register</code></td><td>None</td><td>Create a new user account</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/auth/login</code></td><td>None</td><td>Authenticate and receive a JWT</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/auth/forgot-password</code></td><td>None</td><td>Generate a password reset token</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/auth/reset-password</code></td><td>None</td><td>Reset password using a reset token</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST <code>/auth/register</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "email": "string (required)",
+  "password": "string (required)",
+  "name": "string (required)",
+  "role": "string?",
+  "department": "string?",
+  "university": "string? (default: Fu Jen Catholic University)",
+  "year": "string? (default: N/A)",
+  "bio": "[string]?",
+  "skills": "[{ name, level }]?",
+  "skill_tags": "[string]?",
+  "languages": "[string]? (default: [Chinese, English])",
+  "interests": "[string]?"
+}</code></pre>
+  <h4>Response (200)</h4>
+  <pre><code>{
+  "token": "JWT string",
+  "user": { ...UserResponse }
+}</code></pre>
+  <p><strong>Errors</strong>: 422 (validation), 409 (email already registered)</p>
+  <p><strong>Side effects</strong>: Creates user document, hashes password with bcrypt (cost 12), auto-generates initials from name.</p>
+
+  <h3>POST <code>/auth/login</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "email": "string",
+  "password": "string"
+}</code></pre>
+  <h4>Response (200)</h4>
+  <pre><code>{
+  "token": "JWT string",
+  "user": { ...UserResponse }
+}</code></pre>
+  <p><strong>Errors</strong>: 401 (invalid email or password)</p>
+
+  <h3>POST <code>/auth/forgot-password</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "email": "string"
+}</code></pre>
+  <h4>Response (200)</h4>
+  <pre><code>{
+  "success": true,
+  "reset_token": "64-char hex string"
+}</code></pre>
+  <p>If the email does not exist, returns success with an empty token (does not reveal email existence). The reset token expires after 30 minutes.</p>
+
+  <h3>POST <code>/auth/reset-password</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "token": "string",
+  "password": "string"
+}</code></pre>
+  <h4>Response (200)</h4>
+  <pre><code>{ "success": true }</code></pre>
+  <p><strong>Errors</strong>: 422 (invalid or expired reset token)</p>
+  <p><strong>Side effects</strong>: Hashes new password, clears reset token fields.</p>
+
+  <!-- ============================================================ -->
+  <h2>Users</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/users?page&amp;limit&amp;q</code></td><td>None</td><td>List users (paginated, searchable)</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/users/me</code></td><td>Bearer</td><td>Get the authenticated user's profile</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/users/&lt;id&gt;</code></td><td>None (OptionalAuth)</td><td>Get a user by ID</td></tr>
+      <tr><td><span class="badge badge-patch">PATCH</span></td><td><code>/users/&lt;id&gt;</code></td><td>Bearer</td><td>Update a user's profile</td></tr>
+      <tr><td><span class="badge badge-delete">DELETE</span></td><td><code>/users/&lt;id&gt;</code></td><td>Bearer</td><td>Delete a user</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/users/me/change-password</code></td><td>Bearer</td><td>Change own password</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/users/me/onboard</code></td><td>Bearer</td><td>Mark user as onboarded</td></tr>
+    </tbody>
+  </table>
+
+  <h3>GET <code>/users</code></h3>
+  <p><strong>Query params</strong>: <code>page</code> (default 1), <code>limit</code> (default 20), <code>q</code> (search string)</p>
+  <h4>Response</h4>
+  <pre><code>{
+  "users": [UserResponse],
+  "total": 42,
+  "page": 1,
+  "limit": 20
+}</code></pre>
+
+  <h3>GET <code>/users/&lt;id&gt;</code></h3>
+  <p>If the caller is authenticated (OptionalAuth), the response includes a computed <code>match_score</code> (0-100) based on Jaccard similarity of skill tags between the viewer and the target user.</p>
+
+  <h3>PATCH <code>/users/&lt;id&gt;</code></h3>
+  <p>Only the user themselves or an admin can update a profile. All fields are optional. Accepts the full <code>UpdateUserRequest</code> shape including name, bio, skills, skill_tags, portfolio, social_links, availability, work_mode, gradient, notification preferences, etc.</p>
+
+  <h3>POST <code>/users/me/change-password</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "old_password": "string",
+  "new_password": "string"
+}</code></pre>
+  <p><strong>Errors</strong>: 422 (current password is incorrect)</p>
+
+  <!-- ============================================================ -->
+  <h2>Projects</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/projects?page&amp;limit&amp;status&amp;q</code></td><td>None</td><td>List projects (paginated, filterable)</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/projects/my</code></td><td>Bearer</td><td>List projects where the user is the lead</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/projects/joined</code></td><td>Bearer</td><td>List projects where the user is a team member</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/projects/&lt;id&gt;</code></td><td>None</td><td>Get project by ID</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/projects</code></td><td>Bearer</td><td>Create a new project</td></tr>
+      <tr><td><span class="badge badge-patch">PATCH</span></td><td><code>/projects/&lt;id&gt;</code></td><td>Bearer</td><td>Update a project (lead only)</td></tr>
+      <tr><td><span class="badge badge-delete">DELETE</span></td><td><code>/projects/&lt;id&gt;</code></td><td>Bearer</td><td>Delete a project (lead or admin)</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/projects/&lt;id&gt;/recommend</code></td><td>Bearer</td><td>Get recommended users for a project</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/projects/&lt;id&gt;/complete</code></td><td>Bearer</td><td>Mark a project as completed (lead only)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/projects/&lt;id&gt;/leave</code></td><td>Bearer</td><td>Leave a project (non-lead members only)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/projects/&lt;id&gt;/remove-member/&lt;user_id&gt;</code></td><td>Bearer</td><td>Remove a member (lead only)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/projects/&lt;id&gt;/set-role/&lt;user_id&gt;</code></td><td>Bearer</td><td>Set a member's role (lead only)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST <code>/projects</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "name": "string (required)",
+  "description": "string?",
+  "goals": "string?",
+  "roles": "[{ name, count_needed }]?",
+  "skills": "[string]?",
+  "deadline": "string?",
+  "collab": "string?",
+  "duration": "string?",
+  "category": "string?",
+  "is_public": "bool? (default true)",
+  "join_mode": "string? (default 'direct')",
+  "icon": "string? (default 'Pr')",
+  "icon_bg": "string?",
+  "banner_image": "string?"
+}</code></pre>
+  <p><strong>Side effects</strong>: The creator is automatically added as the first team member with role "Lead".</p>
+
+  <h3>GET <code>/projects/&lt;id&gt;/recommend</code></h3>
+  <p>Returns up to 20 users ranked by skill overlap with the project's required skills, excluding existing team members. Each returned user includes a <code>match_score</code>.</p>
+
+  <h3>POST <code>/projects/&lt;id&gt;/set-role/&lt;user_id&gt;</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{ "role": "string" }</code></pre>
+
+  <!-- ============================================================ -->
+  <h2>Project Updates</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/projects/&lt;id&gt;/updates</code></td><td>None</td><td>List updates for a project</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/projects/&lt;id&gt;/updates</code></td><td>Bearer</td><td>Post an update (team members only)</td></tr>
+      <tr><td><span class="badge badge-delete">DELETE</span></td><td><code>/projects/&lt;id&gt;/updates/&lt;update_id&gt;</code></td><td>Bearer</td><td>Delete an update (author or lead only)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST <code>/projects/&lt;id&gt;/updates</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "kind": "progress | milestone | announcement | help_wanted",
+  "title": "string",
+  "body": "string?"
+}</code></pre>
+  <p><strong>Side effects</strong>: Notifies all other team members.</p>
+
+  <!-- ============================================================ -->
+  <h2>Competitions</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/competitions?page&amp;limit&amp;status&amp;q</code></td><td>None</td><td>List published competitions</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/competitions/featured</code></td><td>None</td><td>List featured competitions</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/competitions/mine</code></td><td>Publisher</td><td>List competitions owned by the publisher</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/competitions/pending</code></td><td>Admin</td><td>List competitions pending review</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/competitions/&lt;id&gt;</code></td><td>None (OptionalAuth)</td><td>Get competition by ID</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/competitions</code></td><td>Publisher</td><td>Create a competition</td></tr>
+      <tr><td><span class="badge badge-patch">PATCH</span></td><td><code>/competitions/&lt;id&gt;</code></td><td>Publisher</td><td>Update a competition (owner or admin)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/competitions/&lt;id&gt;/register</code></td><td>Bearer</td><td>Register for a competition</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/competitions/&lt;id&gt;/interest</code></td><td>Bearer</td><td>Toggle interest (like/unlike)</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/competitions/&lt;id&gt;/registrations</code></td><td>Publisher</td><td>List registrations (owner or admin)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/competitions/&lt;id&gt;/submit-review</code></td><td>Publisher</td><td>Submit draft for admin review</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/competitions/&lt;id&gt;/approve</code></td><td>Admin</td><td>Approve a pending competition</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/competitions/&lt;id&gt;/reject</code></td><td>Admin</td><td>Reject a pending competition</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/competitions/&lt;id&gt;/winners</code></td><td>Admin</td><td>Set competition winners</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST <code>/competitions/&lt;id&gt;/register</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "team_name": "string?",
+  "motivation": "string?",
+  "skills": "[string]?",
+  "contact_email": "string?"
+}</code></pre>
+  <p><strong>Errors</strong>: 409 (already registered)</p>
+
+  <h3>POST <code>/competitions/&lt;id&gt;/interest</code></h3>
+  <p>Toggles the user's interest status. Returns:</p>
+  <pre><code>{ "interested": true }</code></pre>
+
+  <h3>GET <code>/competitions/&lt;id&gt;</code></h3>
+  <p>The response includes computed fields based on the viewer:</p>
+  <ul>
+    <li><code>registration_count</code> — total registrations</li>
+    <li><code>interested_count</code> — total interested users</li>
+    <li><code>is_registered_by_viewer</code> — whether the authenticated viewer is registered</li>
+    <li><code>is_interested_by_viewer</code> — whether the authenticated viewer is interested</li>
+    <li><code>registrations</code> — full list (only if the viewer is the publisher/admin)</li>
+  </ul>
+
+  <h3>POST <code>/competitions/&lt;id&gt;/reject</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{ "note": "string?" }</code></pre>
+
+  <h3>POST <code>/competitions/&lt;id&gt;/winners</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{ "winner_user_ids": ["string"] }</code></pre>
+
+  <!-- ============================================================ -->
+  <h2>Competition Teams</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/competition-teams</code></td><td>Bearer</td><td>Create a team for a competition</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/competition-teams/&lt;id&gt;</code></td><td>None</td><td>Get team by ID</td></tr>
+      <tr><td><span class="badge badge-patch">PATCH</span></td><td><code>/competition-teams/&lt;id&gt;</code></td><td>Bearer</td><td>Update team (lead only)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/competition-teams/&lt;id&gt;/apply</code></td><td>Bearer</td><td>Apply to join a team</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/competition-teams/&lt;id&gt;/accept/&lt;user_id&gt;</code></td><td>Bearer</td><td>Accept a team applicant (lead only)</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/competition-teams/&lt;id&gt;/applications</code></td><td>Bearer</td><td>List pending applications (lead only)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/competition-teams/&lt;id&gt;/leave</code></td><td>Bearer</td><td>Leave a team (non-lead only)</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/competition-teams/competition/&lt;comp_id&gt;</code></td><td>None</td><td>List teams for a competition</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/competition-teams/mine</code></td><td>Bearer</td><td>List teams where the user is lead</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST <code>/competition-teams</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "competition_id": "string",
+  "competition_name": "string",
+  "name": "string",
+  "description": "string?",
+  "max_members": "u8? (default 5)",
+  "looking_for": "[string]?",
+  "open_roles": "[string]?"
+}</code></pre>
+  <p><strong>Side effects</strong>: Creator is added as first member with role "Lead".</p>
+
+  <h3>POST <code>/competition-teams/&lt;id&gt;/apply</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{ "message": "string?" }</code></pre>
+  <p><strong>Side effects</strong>: Creates a join request, notifies the team lead.</p>
+
+  <h3>POST <code>/competition-teams/&lt;id&gt;/accept/&lt;user_id&gt;</code></h3>
+  <p><strong>Side effects</strong>: Adds user to team, updates join request status to "accepted", notifies the applicant. If the team reaches <code>max_members</code>, status is auto-set to "full".</p>
+
+  <!-- ============================================================ -->
+  <h2>Study Groups</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/study-groups?page&amp;limit&amp;open_only</code></td><td>None</td><td>List study groups</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/study-groups/joined</code></td><td>Bearer</td><td>List groups the user has joined</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/study-groups/&lt;id&gt;</code></td><td>None</td><td>Get a study group by ID</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/study-groups</code></td><td>Bearer</td><td>Create a study group</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/study-groups/&lt;id&gt;/join</code></td><td>Bearer</td><td>Join a study group</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/study-groups/&lt;id&gt;/checkin</code></td><td>Bearer</td><td>Daily check-in (members only)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/study-groups/&lt;id&gt;/notes</code></td><td>Bearer</td><td>Add a study note (members only)</td></tr>
+      <tr><td><span class="badge badge-delete">DELETE</span></td><td><code>/study-groups/&lt;id&gt;/notes/&lt;note_id&gt;</code></td><td>Bearer</td><td>Delete a note (author or creator)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/study-groups/&lt;id&gt;/leave</code></td><td>Bearer</td><td>Leave the group (non-creator only)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/study-groups/&lt;id&gt;/progress</code></td><td>Bearer</td><td>Set current week (creator only)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/study-groups/&lt;id&gt;/complete</code></td><td>Bearer</td><td>Mark as completed (creator only)</td></tr>
+      <tr><td><span class="badge badge-patch">PATCH</span></td><td><code>/study-groups/&lt;id&gt;</code></td><td>Bearer</td><td>Update group settings (creator only)</td></tr>
+      <tr><td><span class="badge badge-delete">DELETE</span></td><td><code>/study-groups/&lt;id&gt;</code></td><td>Bearer</td><td>Delete the group (creator or admin)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST <code>/study-groups</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "name": "string (required)",
+  "goal": "string?",
+  "icon": "string? (default 'Sg')",
+  "icon_bg": "string?",
+  "subject": "string? (default 'General')",
+  "tags": "[string]?",
+  "max_members": "u8? (default 6)",
+  "schedule": "string?",
+  "duration_weeks": "u8?",
+  "is_open": "bool? (default true)",
+  "join_mode": "string? (default 'direct')",
+  "banner_image": "string?",
+  "description": "string?"
+}</code></pre>
+
+  <h3>POST <code>/study-groups/&lt;id&gt;/notes</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "title": "string",
+  "body": "string"
+}</code></pre>
+
+  <h3>POST <code>/study-groups/&lt;id&gt;/progress</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{ "current_week": 3 }</code></pre>
+
+  <h3>POST <code>/study-groups/&lt;id&gt;/complete</code></h3>
+  <p><strong>Side effects</strong>: Sets status to "completed", notifies all members.</p>
+
+  <!-- ============================================================ -->
+  <h2>Invites</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/invites</code></td><td>Bearer</td><td>List invites for the authenticated user</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/invites/&lt;id&gt;</code></td><td>Bearer</td><td>Get invite by ID (sender or recipient)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/invites</code></td><td>Bearer</td><td>Send an invite</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/invites/&lt;id&gt;/respond</code></td><td>Bearer</td><td>Accept or decline an invite</td></tr>
+      <tr><td><span class="badge badge-patch">PATCH</span></td><td><code>/invites/&lt;id&gt;/read</code></td><td>Bearer</td><td>Mark an invite as read</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/invites/read-all</code></td><td>Bearer</td><td>Mark all invites as read</td></tr>
+      <tr><td><span class="badge badge-delete">DELETE</span></td><td><code>/invites/&lt;id&gt;</code></td><td>Bearer</td><td>Delete an invite (sender only)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST <code>/invites</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "to_user_id": "string",
+  "project_id": "string?",
+  "study_group_id": "string?",
+  "competition_team_id": "string?",
+  "message": "string?"
+}</code></pre>
+  <p>Exactly one of <code>project_id</code>, <code>study_group_id</code>, or <code>competition_team_id</code> should be provided. Invites expire after 7 days. Duplicate pending invites are rejected (409).</p>
+  <p><strong>Side effects</strong>: Creates a notification for the recipient.</p>
+
+  <h3>POST <code>/invites/&lt;id&gt;/respond</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{ "accept": true }</code></pre>
+  <p><strong>Side effects on accept</strong>: Adds the user to the referenced project/study group/competition team. Notifies the sender.</p>
+  <p><strong>Side effects on decline</strong>: Notifies the sender.</p>
+
+  <!-- ============================================================ -->
+  <h2>Join Requests</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/join-requests</code></td><td>Bearer</td><td>Submit a join request</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/join-requests/incoming</code></td><td>Bearer</td><td>List requests where the user is the entity owner</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/join-requests/sent</code></td><td>Bearer</td><td>List requests the user has sent</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/join-requests/&lt;id&gt;/respond</code></td><td>Bearer</td><td>Accept or decline (entity owner only)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST <code>/join-requests</code></h3>
+  <h4>Request body (rich application form)</h4>
+  <pre><code>{
+  "entity_type": "project | study_group | competition_team",
+  "entity_id": "string",
+  "message": "string?",
+  "motivation": "string?",
+  "role_wanted": "string?",
+  "hours_per_week": "string?",
+  "portfolio_url": "string?",
+  "relevant_experience": "string?",
+  "availability_start": "string?",
+  "can_meet_in_person": "bool?",
+  "additional_links": "[string]?",
+  "comm_channels": "[string]?",
+  "timezone": "string?",
+  "agreed_to_coc": "bool?",
+  "skill_confidence": "[string]?"
+}</code></pre>
+  <p><strong>Side effects</strong>: Resolves entity name and owner from the database, creates notification for the owner.</p>
+
+  <h3>POST <code>/join-requests/&lt;id&gt;/respond</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "accept": true,
+  "note": "string?"
+}</code></pre>
+  <p><strong>Side effects on accept</strong>:</p>
+  <ul>
+    <li>Adds the user to the entity (project/study group/competition team)</li>
+    <li>For projects: assigns <code>role_wanted</code>, increments role filled count, auto-activates project if all roles are filled</li>
+    <li>For competition teams: auto-sets status to "full" if <code>max_members</code> reached</li>
+    <li>Notifies the applicant</li>
+  </ul>
+  <p><strong>Side effects on decline</strong>: Notifies the applicant with optional note.</p>
+
+  <!-- ============================================================ -->
+  <h2>Peer Reviews</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/reviews/for/&lt;user_id&gt;</code></td><td>None</td><td>Get all reviews for a user</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/reviews</code></td><td>Bearer</td><td>Submit a peer review</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST <code>/reviews</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "reviewee_id": "string",
+  "project_id": "string?",
+  "study_group_id": "string?",
+  "project_name": "string?",
+  "scores": {
+    "skill": 1-5,
+    "communication": 1-5,
+    "reliability": 1-5,
+    "teamwork": 1-5
+  },
+  "body": "string?",
+  "endorsed_skills": "[string]?"
+}</code></pre>
+  <p><strong>Side effects</strong>:</p>
+  <ul>
+    <li>Recalculates the reviewee's average rating across all reviews</li>
+    <li>Pushes a cached review summary to the reviewee's <code>reviews</code> array on the user document</li>
+    <li>Creates a notification for the reviewee</li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2>Chat</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/chat/conversations</code></td><td>Bearer</td><td>List conversations with partner metadata</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/chat/messages/&lt;partner_id&gt;</code></td><td>Bearer</td><td>Get message history with a partner</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/chat/messages</code></td><td>Bearer</td><td>Send a message</td></tr>
+      <tr><td><span class="badge badge-ws">WS</span></td><td><code>/chat/ws?token=&lt;jwt&gt;</code></td><td>Token in query</td><td>WebSocket connection for real-time messages</td></tr>
+    </tbody>
+  </table>
+
+  <h3>GET <code>/chat/conversations</code></h3>
+  <h4>Response</h4>
+  <pre><code>[
+  {
+    "partner_id": "string",
+    "partner_name": "string",
+    "partner_avatar": "string?",
+    "partner_initials": "string",
+    "partner_gradient": "string",
+    "last_message": "string",
+    "unread_count": 3,
+    "updated_at": "ISO 8601"
+  }
+]</code></pre>
+
+  <h3>GET <code>/chat/messages/&lt;partner_id&gt;</code></h3>
+  <p>Returns all messages between the authenticated user and the partner. <strong>Side effect</strong>: marks all messages from the partner as read.</p>
+
+  <h3>POST <code>/chat/messages</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "to_user_id": "string",
+  "content": "string"
+}</code></pre>
+  <p><strong>Side effects</strong>: Persists the message and broadcasts to the recipient's WebSocket channel.</p>
+
+  <h3>GET <code>/chat/ws?token=&lt;jwt&gt;</code></h3>
+  <p>Upgrades to a WebSocket connection. The JWT is passed as a query parameter (not a header) because the browser WebSocket API does not support custom headers.</p>
+  <h4>Incoming messages (client to server)</h4>
+  <pre><code>{
+  "to_user_id": "string",
+  "content": "string"
+}</code></pre>
+  <h4>Outgoing messages (server to client)</h4>
+  <p>Full <code>Message</code> objects as JSON strings, pushed when another user sends a message to the connected user.</p>
+
+  <!-- ============================================================ -->
+  <h2>Notifications</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/notifications?limit</code></td><td>Bearer</td><td>List notifications (default limit 50)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/notifications/&lt;id&gt;/read</code></td><td>Bearer</td><td>Mark a notification as read</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/notifications/read-all</code></td><td>Bearer</td><td>Mark all notifications as read</td></tr>
+    </tbody>
+  </table>
+  <p>Notification <code>kind</code> values: <code>invite</code>, <code>invite_accepted</code>, <code>invite_declined</code>, <code>join_request</code>, <code>join_accepted</code>, <code>join_declined</code>, <code>review</code>, <code>message</code>, <code>project_update</code>, <code>competition_recommend</code>, <code>system</code></p>
+
+  <!-- ============================================================ -->
+  <h2>Bookmarks</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/bookmarks</code></td><td>Bearer</td><td>List all bookmarks for the user</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/bookmarks</code></td><td>Bearer</td><td>Add a bookmark</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/bookmarks/remove</code></td><td>Bearer</td><td>Remove a bookmark</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST <code>/bookmarks</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "kind": "user | project | competition | study_group | competition_team",
+  "entity_id": "string",
+  "label": "string?"
+}</code></pre>
+
+  <h3>POST <code>/bookmarks/remove</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "kind": "string",
+  "entity_id": "string"
+}</code></pre>
+
+  <!-- ============================================================ -->
+  <h2>Skills</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/skills/catalog</code></td><td>None</td><td>Get the full skill catalog</td></tr>
+    </tbody>
+  </table>
+  <h4>Response</h4>
+  <pre><code>{
+  "categories": [
+    { "id": "frontend", "label": "Frontend", "label_zh": "...", "order": 0, ... }
+  ],
+  "tags": [
+    { "id": "uuid", "name": "React", "name_zh": "React", "category_key": "frontend", "order": 0, "is_active": true, ... }
+  ]
+}</code></pre>
+
+  <!-- ============================================================ -->
+  <h2>Uploads</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/uploads/avatar</code></td><td>Bearer</td><td>Upload an avatar image</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/uploads/portfolio</code></td><td>Bearer</td><td>Upload a portfolio file</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/uploads/resume</code></td><td>Bearer</td><td>Upload a resume</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/uploads/banner</code></td><td>Bearer</td><td>Upload a banner image</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/uploads/application</code></td><td>Bearer</td><td>Upload an application attachment</td></tr>
+      <tr><td><span class="badge badge-delete">DELETE</span></td><td><code>/uploads?path=&lt;url_path&gt;</code></td><td>Bearer</td><td>Delete an uploaded file</td></tr>
+    </tbody>
+  </table>
+  <p>All upload endpoints accept <code>multipart/form-data</code> with a <code>file</code> field.</p>
+  <p><strong>Portfolio uploads</strong> also accept <code>title</code> and <code>kind</code> form fields.</p>
+  <h4>Response for all uploads</h4>
+  <pre><code>{ "url": "/uploads/&lt;user_id&gt;/&lt;type&gt;/&lt;uuid&gt;.&lt;ext&gt;" }</code></pre>
+  <p>Files are stored on disk at <code>uploads/&lt;user_id&gt;/&lt;type&gt;/</code>. Filenames are sanitized and replaced with UUID v4 to prevent collisions.</p>
+  <p><strong>DELETE <code>/uploads?path=&lt;url_path&gt;</code></strong>: The path must start with <code>/uploads/&lt;user_id&gt;/</code> and must not contain <code>..</code>. Only the owning user can delete their files.</p>
+
+  <!-- ============================================================ -->
+  <h2>Search</h2>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/search?q&amp;kind&amp;limit</code></td><td>None</td><td>Cross-entity search</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Query params</strong>:</p>
+  <ul>
+    <li><code>q</code> (required) — search query string</li>
+    <li><code>kind</code> (optional) — filter by entity type: <code>user</code>, <code>project</code>, <code>competition</code>, <code>study_group</code></li>
+    <li><code>limit</code> (optional, default 20) — max results</li>
+  </ul>
+  <h4>Response</h4>
+  <pre><code>{
+  "results": [
+    {
+      "kind": "user | project | competition | study_group",
+      "id": "string",
+      "name": "string",
+      "description": "string?",
+      "icon": "string?"
+    }
+  ]
+}</code></pre>
+  <p>Searches across users, projects, competitions, and study groups simultaneously. Results are capped at <code>limit</code> total.</p>
+
+  <!-- ============================================================ -->
+  <h2>Admin</h2>
+  <div class="callout callout-warn">
+    <strong>All admin endpoints require the <code>AdminUser</code> guard (Bearer token + <code>is_admin: true</code>).</strong>
+  </div>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/admin/stats</code></td><td>Admin</td><td>Dashboard statistics</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/admin/timeseries?range</code></td><td>Admin</td><td>Time-series data for charts</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/admin/users?page&amp;limit</code></td><td>Admin</td><td>List all users (paginated)</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/admin/projects</code></td><td>Admin</td><td>List all projects</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/admin/study-groups</code></td><td>Admin</td><td>List all study groups</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/admin/competitions</code></td><td>Admin</td><td>List all competitions (all statuses)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/admin/users/&lt;id&gt;/promote</code></td><td>Admin</td><td>Toggle admin status</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/admin/users/&lt;id&gt;/publisher</code></td><td>Admin</td><td>Toggle publisher status</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/admin/projects/&lt;id&gt;/promote</code></td><td>Admin</td><td>Toggle project promoted status</td></tr>
+      <tr><td><span class="badge badge-delete">DELETE</span></td><td><code>/admin/users/&lt;id&gt;</code></td><td>Admin</td><td>Delete a user</td></tr>
+      <tr><td><span class="badge badge-delete">DELETE</span></td><td><code>/admin/projects/&lt;id&gt;</code></td><td>Admin</td><td>Delete a project</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/admin/export/users.csv</code></td><td>Admin</td><td>Export all users as CSV</td></tr>
+    </tbody>
+  </table>
+
+  <h3>GET <code>/admin/stats</code></h3>
+  <h4>Response</h4>
+  <pre><code>{
+  "users": 150,
+  "projects": 42,
+  "competitions": 8,
+  "study_groups": 15
+}</code></pre>
+
+  <h3>GET <code>/admin/timeseries?range</code></h3>
+  <p><strong>Query params</strong>: <code>range</code> = <code>7d</code>, <code>30d</code>, <code>90d</code>, <code>365d</code>, or <code>1y</code> (default <code>30d</code>)</p>
+  <p><strong>Response</strong>: Array of daily buckets with <code>date</code>, <code>users</code>, <code>projects</code> counts.</p>
+
+  <h3>Admin Skills</h3>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/admin/skills</code></td><td>Admin</td><td>List all skill categories and tags</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/admin/skills/categories</code></td><td>Admin</td><td>Create a skill category</td></tr>
+      <tr><td><span class="badge badge-patch">PATCH</span></td><td><code>/admin/skills/categories/&lt;key&gt;</code></td><td>Admin</td><td>Update a skill category</td></tr>
+      <tr><td><span class="badge badge-delete">DELETE</span></td><td><code>/admin/skills/categories/&lt;key&gt;</code></td><td>Admin</td><td>Delete a skill category</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/admin/skills/tags</code></td><td>Admin</td><td>Create a skill tag</td></tr>
+      <tr><td><span class="badge badge-patch">PATCH</span></td><td><code>/admin/skills/tags/&lt;id&gt;</code></td><td>Admin</td><td>Update a skill tag</td></tr>
+      <tr><td><span class="badge badge-delete">DELETE</span></td><td><code>/admin/skills/tags/&lt;id&gt;</code></td><td>Admin</td><td>Delete a skill tag</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST <code>/admin/skills/categories</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "key": "string (becomes the _id)",
+  "label": "string",
+  "label_zh": "string",
+  "order": "i32?"
+}</code></pre>
+
+  <h3>POST <code>/admin/skills/tags</code></h3>
+  <h4>Request body</h4>
+  <pre><code>{
+  "name": "string",
+  "name_zh": "string",
+  "category_key": "string",
+  "order": "i32?",
+  "is_active": "bool? (default true)"
+}</code></pre>
+
+</div>
+</body>
+</html>

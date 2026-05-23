@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Overview — Teamder Backend Docs</title>
+<style>
+  :root {
+    --c-peach: #DD6E42;
+    --c-peach-dark: #B85530;
+    --c-slate: #4F6D7A;
+    --c-slate-dark: #2C3E45;
+    --c-beige: #E8DAB2;
+    --c-sky: #C0D6DF;
+    --c-sky-light: #DCE8EE;
+    --c-paper: #FAF7F0;
+    --c-ink: #1F2A2F;
+    --c-mute: #8A99A0;
+    --c-success: #3D9970;
+    --c-warning: #E6A817;
+    --c-danger: #C0392B;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--c-paper);
+    color: var(--c-ink);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .sidebar {
+    position: fixed; top: 0; left: 0;
+    width: 260px; height: 100vh;
+    background: var(--c-slate-dark); color: #fff;
+    overflow-y: auto; padding: 24px 0; z-index: 100;
+  }
+  .sidebar .logo {
+    font-size: 20px; font-weight: 700;
+    padding: 0 20px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    margin-bottom: 16px;
+  }
+  .sidebar .logo span { color: var(--c-peach); }
+  .sidebar .section-title {
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.12em; padding: 12px 20px 4px;
+    color: var(--c-peach); font-weight: 600;
+  }
+  .sidebar a {
+    display: block; color: rgba(255,255,255,0.7);
+    text-decoration: none; padding: 5px 20px 5px 24px;
+    font-size: 13px; border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  .sidebar a:hover, .sidebar a.active {
+    color: #fff; background: rgba(255,255,255,0.05);
+    border-left-color: var(--c-peach);
+  }
+  .sidebar a.active { font-weight: 600; }
+  .sidebar .divider {
+    height: 1px; background: rgba(255,255,255,0.08);
+    margin: 12px 20px;
+  }
+  .main {
+    margin-left: 260px; max-width: 900px;
+    padding: 40px 48px 120px;
+  }
+  h1 {
+    font-size: 30px; font-weight: 700;
+    color: var(--c-slate-dark); margin-bottom: 8px;
+    letter-spacing: -0.03em;
+  }
+  .subtitle { font-size: 15px; color: var(--c-mute); margin-bottom: 32px; }
+  h2 {
+    font-size: 21px; font-weight: 700; color: var(--c-slate-dark);
+    margin: 40px 0 14px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--c-peach);
+  }
+  h3 { font-size: 16px; font-weight: 600; color: var(--c-slate); margin: 24px 0 8px; }
+  h4 { font-size: 14px; font-weight: 600; color: var(--c-ink); margin: 16px 0 6px; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 0 0 14px 24px; }
+  li { margin-bottom: 4px; }
+  a { color: var(--c-peach-dark); }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 20px; font-size: 13.5px; }
+  th {
+    background: var(--c-slate-dark); color: #fff;
+    text-align: left; padding: 8px 12px;
+    font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  td { padding: 7px 12px; border-bottom: 1px solid rgba(79,109,122,0.1); vertical-align: top; }
+  tr:hover td { background: rgba(192,214,223,0.15); }
+  code {
+    background: rgba(79,109,122,0.08); padding: 1px 5px;
+    border-radius: 3px; font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    font-size: 13px; color: var(--c-slate-dark);
+  }
+  pre {
+    background: var(--c-slate-dark); color: #e0e8ec;
+    padding: 16px 20px; border-radius: 8px;
+    overflow-x: auto; margin: 10px 0 18px;
+    font-size: 13px; line-height: 1.6;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+  .callout {
+    padding: 14px 18px; border-radius: 8px;
+    margin: 14px 0; font-size: 14px;
+  }
+  .callout-info { background: rgba(192,214,223,0.3); border-left: 4px solid var(--c-slate); }
+  .callout-warn { background: rgba(230,168,23,0.1); border-left: 4px solid var(--c-warning); }
+  .callout-success { background: rgba(61,153,112,0.08); border-left: 4px solid var(--c-success); }
+  .callout-danger { background: rgba(192,57,43,0.08); border-left: 4px solid var(--c-danger); }
+  .callout strong { display: block; margin-bottom: 4px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; vertical-align: middle;
+  }
+  .badge-get { background: var(--c-sky); color: var(--c-slate-dark); }
+  .badge-post { background: var(--c-success); color: #fff; }
+  .badge-patch { background: var(--c-warning); color: #fff; }
+  .badge-delete { background: var(--c-danger); color: #fff; }
+  .badge-ws { background: var(--c-slate); color: #fff; }
+  @media (max-width: 860px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 24px 20px 80px; }
+  }
+  @media print {
+    .sidebar { display: none; }
+    .main { margin-left: 0; max-width: 100%; padding: 20px; }
+  }
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <div class="logo"><span>T</span>eamder API</div>
+  <div class="section-title">Documentation</div>
+  <a href="README.html" class="active">Overview</a>
+  <a href="getting-started.html">Getting Started</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="api-reference.html">API Reference</a>
+  <a href="database-design.html">Database Design</a>
+  <a href="authentication.html">Authentication</a>
+  <a href="deployment.html">Deployment</a>
+</nav>
+<div class="main">
+
+  <h1>Teamder Backend — Documentation</h1>
+  <p class="subtitle">Rust/Rocket REST API powering the Teamder team-matching platform.</p>
+
+  <h2>Table of Contents</h2>
+  <ul>
+    <li><a href="getting-started.html">Getting Started</a> — prerequisites, setup, and running locally</li>
+    <li><a href="architecture.html">Architecture</a> — workspace structure, design decisions, request lifecycle</li>
+    <li><a href="api-reference.html">API Reference</a> — every endpoint, grouped by domain</li>
+    <li><a href="database-design.html">Database Design</a> — all 14 MongoDB collections with field-level detail</li>
+    <li><a href="authentication.html">Authentication</a> — JWT, guards, role-based access</li>
+    <li><a href="deployment.html">Deployment</a> — building, Docker, production configuration</li>
+  </ul>
+
+  <h2>What is Teamder?</h2>
+  <p>Teamder is a team-matching platform for university students at Fu Jen Catholic University. It helps students:</p>
+  <ul>
+    <li><strong>Discover collaborators</strong> by skill, availability, and domain interest</li>
+    <li><strong>Post or join projects</strong> with role-based recruiting and auto-activation</li>
+    <li><strong>Enter competitions</strong> published by approved publishers, form competition teams</li>
+    <li><strong>Create study groups</strong> with check-in streaks, shared notes, and weekly progress</li>
+    <li><strong>Exchange invites</strong> and respond to join requests with rich application forms</li>
+    <li><strong>Review teammates</strong> after collaborating (multi-dimensional peer reviews)</li>
+    <li><strong>Chat in real time</strong> via REST and WebSocket messaging</li>
+  </ul>
+
+  <h2>Tech Stack</h2>
+  <table>
+    <thead>
+      <tr><th>Layer</th><th>Technology</th><th>Version</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Language</td><td>Rust</td><td>2021 edition</td></tr>
+      <tr><td>Web Framework</td><td>Rocket</td><td>0.5</td></tr>
+      <tr><td>Database</td><td>MongoDB</td><td>3.x driver (mongodb crate)</td></tr>
+      <tr><td>BSON</td><td>bson</td><td>2.x (with chrono support)</td></tr>
+      <tr><td>Auth</td><td>JWT (HS256) + bcrypt</td><td>jsonwebtoken 9 / bcrypt 0.17</td></tr>
+      <tr><td>Real-time</td><td>WebSocket</td><td>rocket_ws 0.1</td></tr>
+      <tr><td>CORS</td><td>rocket_cors</td><td>0.6</td></tr>
+      <tr><td>Validation</td><td>validator</td><td>0.19</td></tr>
+      <tr><td>Logging</td><td>tracing + tracing-subscriber</td><td>0.1 / 0.3</td></tr>
+      <tr><td>Env</td><td>dotenvy</td><td>0.15</td></tr>
+      <tr><td>Async runtime</td><td>Tokio</td><td>1.x (full features)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Workspace Layout</h2>
+  <p>The project is a Cargo workspace with three crates:</p>
+  <pre><code>teamder-sys/
+  crates/
+    teamder-core/    Pure domain models, error types, skill catalog
+    teamder-db/      MongoDB client, repositories, seed data
+    teamder-api/     Rocket application, routes, guards, auth</code></pre>
+  <p>Dependency flow: <code>teamder-core</code> &larr; <code>teamder-db</code> &larr; <code>teamder-api</code></p>
+
+  <h2>Companion Frontend</h2>
+  <p>The Next.js frontend lives at <code>../Teamder</code> and communicates with this API at <code>http://localhost:8000/api/v1</code>. See the frontend CLAUDE.md for its own documentation.</p>
+
+  <h2>Quick Start</h2>
+  <pre><code># Prerequisites: Rust toolchain, MongoDB running on localhost:27017
+
+cp .env.example .env
+cargo run -p teamder-api
+
+# Verify: GET http://localhost:8000/api/v1/health
+# Expected: { "status": "ok" }</code></pre>
+  <p>For full setup instructions, see <a href="getting-started.html">Getting Started</a>.</p>
+
+</div>
+</body>
+</html>
