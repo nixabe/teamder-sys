@@ -1,37 +1,24 @@
 [package]
 name = "teamder-api"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-
-[lib]
-name = "teamder_api"
-path = "src/lib.rs"
-
-[[bin]]
-name = "teamder-api"
-path = "src/main.rs"
-
-[dev-dependencies]
-dotenvy = { workspace = true }
+version = "0.1.0"
+edition = "2021"
 
 [dependencies]
-mongodb = { workspace = true }
-teamder-core = { workspace = true }
-teamder-db = { workspace = true }
-
-rocket = { workspace = true }
+teamder-core = { path = "../teamder-core" }
+teamder-db = { path = "../teamder-db" }
+rocket = { version = "0.5", features = ["json"] }
+rocket_ws = "0.1"
+rocket_cors = "0.6"
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
-thiserror = { workspace = true }
-anyhow = { workspace = true }
+jsonwebtoken = "9"
+bcrypt = "0.17"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-bcrypt = { workspace = true }
-jsonwebtoken = { workspace = true }
-dotenvy = { workspace = true }
-rocket_cors = { workspace = true }
-rocket_ws = { workspace = true }
+anyhow = { workspace = true }
+tokio = { version = "1", features = ["full"] }
+dotenvy = "0.15"
+mongodb = "3"
+futures = "0.3"

@@ -1,175 +1,124 @@
-use rocket::{Route, State, serde::json::Json};
-use serde_json::{Value, json};
-use teamder_core::{
-    error::TeamderError,
-    models::{
-        notification::{Notification, NotificationKind},
-        peer_review::{CreatePeerReviewRequest, PeerReview, PeerReviewResponse},
-        project::ProjectStatus,
-        study_group::StudyGroupStatus,
-        user::Review,
-    },
-    skills::filter_valid_skills,
-};
+use chrono::Utc;
+use rocket::serde::json::Json;
+use rocket::State;
+use serde::Deserialize;
+use uuid::Uuid;
 
-use crate::{error::ApiResult, guards::AuthUser, state::AppState};
+use crate::error::ApiError;
+use crate::guards::AuthUser;
+use crate::state::AppState;
+use teamder_core::error::TeamderError;
+use teamder_core::models::notification::Notification;
+use teamder_core::models::peer_review::{PeerReview, ReviewScores};
+use teamder_core::models::user::CachedReview;
 
-/// POST /api/v1/reviews
-///
-/// Submit a peer review of another user. Both reviewer and reviewee must have
-/// been on the same project (when project_id is supplied). Each (reviewer,
-/// reviewee, project) triplet may only be used once.
-#[post("/", data = "<req>")]
-async fn create_review(
-    req: Json<CreatePeerReviewRequest>,
-    auth: AuthUser,
+// ── DTOs ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CreateReviewBody {
+    pub reviewee_id: String,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub study_group_id: Option<String>,
+    #[serde(default)]
+    pub project_name: Option<String>,
+    pub scores: ReviewScores,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub endorsed_skills: Option<Vec<String>>,
+}
+
+// ── Routes ──────────────────────────────────────────────────────────────────
+
+#[rocket::get("/reviews/for/<user_id>")]
+pub async fn reviews_for_user(
     state: &State<AppState>,
-) -> ApiResult<PeerReviewResponse> {
-    let reviewer_id = auth.0.sub.clone();
+    user_id: &str,
+) -> Result<Json<Vec<PeerReview>>, ApiError> {
+    let reviews = state
+        .db
+        .peer_review_repo()
+        .find_for_user(user_id)
+        .await?;
+    Ok(Json(reviews))
+}
 
-    if reviewer_id == req.reviewee_id {
-        return Err(TeamderError::Validation("Cannot review yourself".into()).into());
-    }
+#[rocket::post("/reviews", data = "<body>")]
+pub async fn create_review(
+    state: &State<AppState>,
+    auth: AuthUser,
+    body: Json<CreateReviewBody>,
+) -> Result<Json<PeerReview>, ApiError> {
+    let req = body.into_inner();
+    let now = Utc::now();
 
     let reviewer = state
-        .users
-        .find_by_id(&reviewer_id)
+        .db
+        .user_repo()
+        .find_by_id(&auth.user_id)
         .await?
         .ok_or_else(|| TeamderError::NotFound("Reviewer not found".into()))?;
 
-    let reviewee = state
-        .users
-        .find_by_id(&req.reviewee_id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound("Reviewee not found".into()))?;
-
-    if req.project_id.is_none() && req.study_group_id.is_none() {
-        return Err(TeamderError::Validation("Either project_id or study_group_id is required".into()).into());
-    }
-
-    // If a project is referenced, ensure both parties were on it and it's completed.
-    if let Some(pid) = &req.project_id {
-        let project = state
-            .projects
-            .find_by_id(pid)
-            .await?
-            .ok_or_else(|| TeamderError::NotFound("Project not found".into()))?;
-        if project.status != ProjectStatus::Completed {
-            return Err(TeamderError::Validation("Reviews can only be submitted after the project is completed".into()).into());
-        }
-        let on_project = |uid: &str| {
-            project.lead_user_id == uid || project.team.iter().any(|m| m.user_id == uid)
-        };
-        if !on_project(&reviewer_id) || !on_project(&req.reviewee_id) {
-            return Err(TeamderError::Forbidden.into());
-        }
-    }
-
-    // If a study group is referenced, ensure both parties were in it and it's completed.
-    if let Some(gid) = &req.study_group_id {
-        let group = state
-            .study_groups
-            .find_by_id(gid)
-            .await?
-            .ok_or_else(|| TeamderError::NotFound("Study group not found".into()))?;
-        if group.status != StudyGroupStatus::Completed {
-            return Err(TeamderError::Validation("Reviews can only be submitted after the study group is completed".into()).into());
-        }
-        let in_group = |uid: &str| {
-            group.created_by == uid || group.members.iter().any(|m| m.user_id == uid)
-        };
-        if !in_group(&reviewer_id) || !in_group(&req.reviewee_id) {
-            return Err(TeamderError::Forbidden.into());
-        }
-    }
-
-    // Prevent duplicate reviews for the same pair + project.
-    let exists = state
-        .peer_reviews
-        .exists_pair(&reviewer_id, &req.reviewee_id, req.project_id.as_deref(), req.study_group_id.as_deref())
-        .await?;
-    if exists {
-        return Err(TeamderError::Conflict("You already reviewed this collaborator for this project".into()).into());
-    }
-
-    let mut scores = req.0.scores;
-    scores.clamp();
-
-    let body = req.0.body.trim().to_string();
-    if body.len() < 5 {
-        return Err(TeamderError::Validation("Review body must be at least 5 characters".into()).into());
-    }
-
-    let endorsed = filter_valid_skills(&req.0.endorsed_skills);
-
-    let review = PeerReview::new(
-        reviewer_id,
-        reviewer.name.clone(),
-        req.0.reviewee_id.clone(),
-        req.0.project_id.clone(),
-        req.0.study_group_id.clone(),
-        req.0.project_name.clone(),
-        scores,
-        body,
-        endorsed,
-    );
-    state.peer_reviews.create(&review).await?;
-
-    // Refresh aggregate cached on reviewee.
-    let (avg, count) = state.peer_reviews.average_for_user(&reviewee.id).await?;
-    state.users.set_rating(&reviewee.id, avg, count).await?;
-
-    // Push embedded review for fast display.
-    let stars = scores.average().round() as u8;
-    let embedded = Review {
-        reviewer_id: review.reviewer_id.clone(),
-        reviewer_name: review.reviewer_name.clone(),
-        project_name: review.project_name.clone(),
-        stars: stars.clamp(1, 5),
-        body: review.body.clone(),
-        created_at: review.created_at,
+    let review = PeerReview {
+        id: Uuid::new_v4().to_string(),
+        reviewer_id: auth.user_id.clone(),
+        reviewer_name: reviewer.name.clone(),
+        reviewee_id: req.reviewee_id.clone(),
+        project_id: req.project_id,
+        study_group_id: req.study_group_id,
+        project_name: req.project_name.clone().unwrap_or_default(),
+        scores: req.scores,
+        body: req.body.clone().unwrap_or_default(),
+        endorsed_skills: req.endorsed_skills.unwrap_or_default(),
+        created_at: now,
     };
-    state.users.push_review(&reviewee.id, &embedded).await?;
 
-    // Notify the reviewee.
-    let n = Notification::new(
-        reviewee.id.clone(),
-        NotificationKind::Review,
-        "New peer review",
-        format!("{} left you a review on {}", reviewer.name, review.project_name),
-        Some(format!("/profile/{}", reviewee.id)),
-    );
-    if let Err(e) = state.notifications.create(&n).await {
-        tracing::warn!("failed to create review notification: {e}");
-    }
+    state.db.peer_review_repo().create(&review).await?;
 
-    Ok(Json(review.into()))
-}
+    // Recalculate reviewee average rating
+    let all_reviews = state
+        .db
+        .peer_review_repo()
+        .find_for_user(&req.reviewee_id)
+        .await?;
 
-/// GET /api/v1/reviews/user/<id> — list reviews left FOR a user.
-#[get("/user/<id>")]
-async fn list_for_user(
-    id: String,
-    state: &State<AppState>,
-) -> ApiResult<Value> {
-    let reviews = state.peer_reviews.list_for_user(&id).await?;
-    let data: Vec<PeerReviewResponse> = reviews.into_iter().map(Into::into).collect();
-    let avg: f32 = if data.is_empty() {
+    let total: f32 = all_reviews.iter().map(|r| r.scores.average()).sum();
+    let avg = if all_reviews.is_empty() {
         0.0
     } else {
-        data.iter().map(|r| r.average).sum::<f32>() / data.len() as f32
+        total / all_reviews.len() as f32
     };
-    Ok(Json(json!({ "data": data, "average": avg, "count": data.len() })))
-}
 
-/// GET /api/v1/reviews/mine — reviews YOU have written.
-#[get("/mine")]
-async fn list_mine(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
-    let reviews = state.peer_reviews.list_by_reviewer(&auth.0.sub).await?;
-    let data: Vec<PeerReviewResponse> = reviews.into_iter().map(Into::into).collect();
-    Ok(Json(json!({ "data": data })))
-}
+    // Push cached review + update rating
+    let cached = CachedReview {
+        reviewer_id: auth.user_id.clone(),
+        reviewer_name: reviewer.name,
+        project_name: req.project_name.unwrap_or_default(),
+        stars: (review.scores.average().round()) as u8,
+        body: req.body.unwrap_or_default(),
+        created_at: now,
+    };
 
-pub fn routes() -> Vec<Route> {
-    routes![create_review, list_for_user, list_mine]
+    state
+        .db
+        .user_repo()
+        .update_rating(&req.reviewee_id, avg, &cached)
+        .await?;
+
+    // Create notification
+    let notif = Notification {
+        id: Uuid::new_v4().to_string(),
+        user_id: req.reviewee_id,
+        kind: "review".to_string(),
+        title: "You received a new peer review".to_string(),
+        body: String::new(),
+        link: None,
+        read: false,
+        created_at: now,
+    };
+    let _ = state.db.notification_repo().create(&notif).await;
+
+    Ok(Json(review))
 }

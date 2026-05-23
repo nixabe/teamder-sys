@@ -1,43 +1,27 @@
-use rocket::{Route, State, serde::json::Json};
-use serde_json::{Value, json};
-use teamder_core::skills::catalog as default_catalog;
+use rocket::serde::json::Json;
+use rocket::State;
+use serde::Serialize;
 
-use crate::{error::ApiResult, state::AppState};
+use crate::error::ApiError;
+use crate::state::AppState;
+use teamder_core::models::skill_catalog::{StoredSkillCategory, StoredSkillTag};
 
-/// GET /api/v1/skills — return the live (DB-backed) skill catalog grouped by
-/// category. Falls back to the hardcoded default if the DB is empty (which
-/// shouldn't normally happen because the seed runs at boot).
-#[get("/")]
-async fn get_catalog(state: &State<AppState>) -> ApiResult<Value> {
-    let cats = state.skill_catalog.list_categories().await?;
-    let tags = state.skill_catalog.list_active_tags().await?;
+// ── DTOs ────────────────────────────────────────────────────────────────────
 
-    if cats.is_empty() {
-        // Fallback to hardcoded default.
-        let cats = default_catalog();
-        return Ok(Json(json!({ "categories": cats })));
-    }
-
-    let categories: Vec<Value> = cats
-        .into_iter()
-        .map(|c| {
-            let skills: Vec<Value> = tags
-                .iter()
-                .filter(|t| t.category_key == c.key)
-                .map(|t| json!({ "name": t.name, "name_zh": t.name_zh }))
-                .collect();
-            json!({
-                "key": c.key,
-                "label": c.label,
-                "label_zh": c.label_zh,
-                "skills": skills,
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({ "categories": categories })))
+#[derive(Debug, Serialize)]
+pub struct SkillCatalogResponse {
+    pub categories: Vec<StoredSkillCategory>,
+    pub tags: Vec<StoredSkillTag>,
 }
 
-pub fn routes() -> Vec<Route> {
-    routes![get_catalog]
+// ── Routes ──────────────────────────────────────────────────────────────────
+
+#[rocket::get("/skills/catalog")]
+pub async fn get_catalog(
+    state: &State<AppState>,
+) -> Result<Json<SkillCatalogResponse>, ApiError> {
+    let categories = state.db.skill_catalog_repo().list_categories().await?;
+    let tags = state.db.skill_catalog_repo().list_tags().await?;
+
+    Ok(Json(SkillCatalogResponse { categories, tags }))
 }

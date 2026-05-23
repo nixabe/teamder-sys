@@ -1,210 +1,330 @@
-use rocket::{Route, State, serde::json::Json};
-use serde_json::{Value, json};
-use teamder_core::{
-    error::TeamderError,
-    models::user::{UpdateUserRequest, User, UserResponse},
-    skills::{compute_match_score, filter_valid_skills},
-};
+use chrono::Utc;
+use mongodb::bson;
+use rocket::serde::json::Json;
+use rocket::State;
+use serde::{Deserialize, Serialize};
 
-use crate::{
-    error::ApiResult,
-    guards::{AuthUser, OptionalAuth},
-    state::AppState,
-};
+use crate::error::ApiError;
+use crate::guards::{AuthUser, OptionalAuth};
+use crate::state::AppState;
+use teamder_core::error::TeamderError;
+use teamder_core::models::user::{UpdateUserRequest, UserResponse};
 
-/// Compute match scores for a list of target users from the viewer's perspective.
-/// If viewer is None, all scores are returned as 0.
-async fn fill_match_scores(
-    state: &AppState,
-    viewer_id: Option<&str>,
-    targets: Vec<User>,
-) -> Result<Vec<UserResponse>, TeamderError> {
-    let viewer = if let Some(vid) = viewer_id {
-        state.users.find_by_id(vid).await?
-    } else {
-        None
-    };
+// ── DTOs ────────────────────────────────────────────────────────────────────
 
-    let viewer_projects = if let Some(v) = &viewer {
-        state.projects.list_by_member(&v.id).await.unwrap_or_default()
-    } else {
-        vec![]
-    };
-
-    let mut out = Vec::with_capacity(targets.len());
-    for t in targets {
-        let target_projects = state.projects.list_by_member(&t.id).await.unwrap_or_default();
-        let score = if let Some(v) = &viewer {
-            if v.id == t.id {
-                t.match_score // self → leave as-is
-            } else {
-                compute_match_score(v, &t, &viewer_projects, &target_projects)
-            }
-        } else {
-            0
-        };
-        let mut resp: UserResponse = t.into();
-        resp.match_score = score;
-        resp.projects_done = target_projects.len() as u32;
-        out.push(resp);
-    }
-    Ok(out)
+#[derive(Debug, Serialize)]
+pub struct PaginatedUsers {
+    pub users: Vec<UserResponse>,
+    pub total: u64,
+    pub page: u64,
+    pub limit: i64,
 }
 
-/// GET /api/v1/users?limit=20&skip=0&q=query
-#[get("/?<limit>&<skip>&<q>")]
-async fn list_users(
+#[derive(Debug, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub old_password: String,
+    pub new_password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SuccessResponse {
+    pub success: bool,
+}
+
+// ── Routes ──────────────────────────────────────────────────────────────────
+
+#[rocket::get("/users?<page>&<limit>&<q>")]
+pub async fn list_users(
+    state: &State<AppState>,
+    page: Option<u64>,
     limit: Option<i64>,
-    skip: Option<u64>,
     q: Option<String>,
-    auth: OptionalAuth,
-    state: &State<AppState>,
-) -> ApiResult<Value> {
-    let limit = limit.unwrap_or(20).min(100);
-    let skip = skip.unwrap_or(0);
+) -> Result<Json<PaginatedUsers>, ApiError> {
+    let page = page.unwrap_or(1);
+    let limit = limit.unwrap_or(20);
+    let skip = (page.saturating_sub(1)) * (limit as u64);
 
-    let users: Vec<User> = if let Some(query) = q {
-        state.users.search(&query).await?
-    } else {
-        state.users.list(limit, skip).await?
-    };
+    let (users, total) = state
+        .db
+        .user_repo()
+        .list(skip, limit, q.as_deref())
+        .await?;
 
-    let viewer_id = auth.0.as_ref().map(|c| c.sub.as_str());
-    let mut data = fill_match_scores(&**state, viewer_id, users).await?;
-    // Sort by match score desc when viewer is authenticated.
-    if viewer_id.is_some() {
-        data.sort_by(|a, b| b.match_score.cmp(&a.match_score));
-    }
+    let users: Vec<UserResponse> = users.into_iter().map(Into::into).collect();
 
-    let total = state.users.count().await?;
-
-    Ok(Json(json!({
-        "data": data,
-        "meta": { "total": total, "limit": limit, "skip": skip }
-    })))
+    Ok(Json(PaginatedUsers {
+        users,
+        total,
+        page,
+        limit,
+    }))
 }
 
-/// GET /api/v1/users/<id>
-#[get("/<id>")]
-async fn get_user(
-    id: String,
-    auth: OptionalAuth,
+#[rocket::get("/users/me")]
+pub async fn get_me(
     state: &State<AppState>,
-) -> ApiResult<UserResponse> {
-    let user = state
-        .users
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("User {} not found", id)))?;
-
-    let viewer_id = auth.0.as_ref().map(|c| c.sub.as_str());
-    let mut filled = fill_match_scores(&**state, viewer_id, vec![user]).await?;
-    Ok(Json(filled.remove(0)))
-}
-
-/// PATCH /api/v1/users/<id>  (authenticated; can only update own profile)
-#[patch("/<id>", data = "<req>")]
-async fn update_user(
-    id: String,
-    mut req: Json<UpdateUserRequest>,
     auth: AuthUser,
-    state: &State<AppState>,
-) -> ApiResult<Value> {
-    if auth.0.sub != id && !auth.0.is_admin {
-        return Err(TeamderError::Forbidden.into());
-    }
-
-    // Sanitize skill_tags + skill names against the catalog.
-    if let Some(tags) = &req.skill_tags {
-        req.skill_tags = Some(filter_valid_skills(tags));
-    }
-    if let Some(skills) = &req.skills {
-        let names: Vec<&str> = skills.iter().map(|s| s.name.as_str()).collect();
-        let valid = filter_valid_skills(&names);
-        req.skills = Some(
-            skills
-                .iter()
-                .filter(|s| valid.iter().any(|v| v.eq_ignore_ascii_case(&s.name)))
-                .cloned()
-                .collect(),
-        );
-    }
-
-    state.users.update(&id, &req).await?;
-
-    Ok(Json(json!({ "success": true })))
-}
-
-/// DELETE /api/v1/users/<id>  (own account or admin)
-#[delete("/<id>")]
-async fn delete_user(id: String, auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
-    if auth.0.sub != id && !auth.0.is_admin {
-        return Err(TeamderError::Forbidden.into());
-    }
-
-    state.users.delete(&id).await?;
-
-    Ok(Json(json!({ "success": true })))
-}
-
-/// GET /api/v1/users/me
-#[get("/me")]
-async fn me(auth: AuthUser, state: &State<AppState>) -> ApiResult<UserResponse> {
+) -> Result<Json<UserResponse>, ApiError> {
     let user = state
-        .users
-        .find_by_id(&auth.0.sub)
+        .db
+        .user_repo()
+        .find_by_id(&auth.user_id)
         .await?
-        .ok_or_else(|| TeamderError::NotFound("Current user not found".into()))?;
+        .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+
     Ok(Json(user.into()))
 }
 
-#[derive(Debug, serde::Deserialize)]
-struct ChangePasswordRequest {
-    old_password: String,
-    new_password: String,
+#[rocket::get("/users/<id>")]
+pub async fn get_user(
+    state: &State<AppState>,
+    id: &str,
+    viewer: OptionalAuth,
+) -> Result<Json<UserResponse>, ApiError> {
+    let user = state
+        .db
+        .user_repo()
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+
+    let mut resp: UserResponse = user.into();
+
+    // Compute match_score if viewer is authenticated
+    if let Some(viewer_id) = &viewer.0 {
+        if viewer_id != id {
+            if let Ok(Some(viewer_user)) = state.db.user_repo().find_by_id(viewer_id).await {
+                let viewer_tags: std::collections::HashSet<&str> =
+                    viewer_user.skill_tags.iter().map(|s| s.as_str()).collect();
+                let target_tags: std::collections::HashSet<&str> =
+                    resp.skill_tags.iter().map(|s| s.as_str()).collect();
+
+                if !viewer_tags.is_empty() && !target_tags.is_empty() {
+                    let intersection = viewer_tags.intersection(&target_tags).count();
+                    let union = viewer_tags.union(&target_tags).count();
+                    let score = ((intersection as f64 / union as f64) * 100.0) as u8;
+                    resp.match_score = Some(score);
+                }
+            }
+        }
+    }
+
+    Ok(Json(resp))
 }
 
-/// POST /api/v1/users/me/change-password
-#[post("/me/change-password", data = "<req>")]
-async fn change_password(
-    req: Json<ChangePasswordRequest>,
-    auth: AuthUser,
+#[rocket::patch("/users/<id>", data = "<body>")]
+pub async fn update_user(
     state: &State<AppState>,
-) -> ApiResult<Value> {
-    let user = state.users.find_by_id(&auth.0.sub).await?
+    auth: AuthUser,
+    id: &str,
+    body: Json<UpdateUserRequest>,
+) -> Result<Json<UserResponse>, ApiError> {
+    // Check permission: own profile or admin
+    if auth.user_id != id {
+        let caller = state
+            .db
+            .user_repo()
+            .find_by_id(&auth.user_id)
+            .await?
+            .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+        if !caller.is_admin {
+            return Err(TeamderError::Forbidden("Cannot edit another user's profile".into()).into());
+        }
+    }
+
+    let req = body.into_inner();
+    let mut update = bson::doc! {};
+
+    if let Some(v) = &req.name {
+        update.insert("name", v.as_str());
+    }
+    if let Some(v) = &req.initials {
+        update.insert("initials", v.as_str());
+    }
+    if let Some(v) = &req.role {
+        update.insert("role", v.as_str());
+    }
+    if let Some(v) = &req.department {
+        update.insert("department", v.as_str());
+    }
+    if let Some(v) = &req.university {
+        update.insert("university", v.as_str());
+    }
+    if let Some(v) = &req.year {
+        update.insert("year", v.as_str());
+    }
+    if let Some(v) = &req.location {
+        update.insert("location", v.as_str());
+    }
+    if let Some(v) = &req.bio {
+        update.insert(
+            "bio",
+            bson::to_bson(v).map_err(|e| TeamderError::Internal(e.to_string()))?,
+        );
+    }
+    if let Some(v) = &req.skills {
+        update.insert(
+            "skills",
+            bson::to_bson(v).map_err(|e| TeamderError::Internal(e.to_string()))?,
+        );
+    }
+    if let Some(v) = &req.skill_tags {
+        update.insert(
+            "skill_tags",
+            bson::to_bson(v).map_err(|e| TeamderError::Internal(e.to_string()))?,
+        );
+    }
+    if let Some(v) = &req.gradient {
+        update.insert("gradient", v.as_str());
+    }
+    if let Some(v) = &req.work_mode {
+        update.insert("work_mode", v.as_str());
+    }
+    if let Some(v) = &req.availability {
+        update.insert("availability", v.as_str());
+    }
+    if let Some(v) = &req.hours_per_week {
+        update.insert("hours_per_week", v.as_str());
+    }
+    if let Some(v) = &req.languages {
+        update.insert(
+            "languages",
+            bson::to_bson(v).map_err(|e| TeamderError::Internal(e.to_string()))?,
+        );
+    }
+    if let Some(v) = &req.portfolio {
+        update.insert(
+            "portfolio",
+            bson::to_bson(v).map_err(|e| TeamderError::Internal(e.to_string()))?,
+        );
+    }
+    if let Some(v) = &req.avatar_url {
+        update.insert("avatar_url", v.as_str());
+    }
+    if let Some(v) = &req.resume_url {
+        update.insert("resume_url", v.as_str());
+    }
+    if let Some(v) = req.is_public {
+        update.insert("is_public", v);
+    }
+    if let Some(v) = req.onboarded {
+        update.insert("onboarded", v);
+    }
+    if let Some(v) = &req.headline {
+        update.insert("headline", v.as_str());
+    }
+    if let Some(v) = req.notify_email {
+        update.insert("notify_email", v);
+    }
+    if let Some(v) = req.notify_in_app {
+        update.insert("notify_in_app", v);
+    }
+    if let Some(v) = &req.social_links {
+        update.insert(
+            "social_links",
+            bson::to_bson(v).map_err(|e| TeamderError::Internal(e.to_string()))?,
+        );
+    }
+    if let Some(v) = &req.interests {
+        update.insert(
+            "interests",
+            bson::to_bson(v).map_err(|e| TeamderError::Internal(e.to_string()))?,
+        );
+    }
+    if let Some(v) = &req.timezone {
+        update.insert("timezone", v.as_str());
+    }
+    if let Some(v) = &req.goals {
+        update.insert("goals", v.as_str());
+    }
+    if let Some(v) = &req.free_days {
+        update.insert(
+            "free_days",
+            bson::to_bson(v).map_err(|e| TeamderError::Internal(e.to_string()))?,
+        );
+    }
+    if let Some(pw) = &req.password {
+        let hash =
+            bcrypt::hash(pw, 12).map_err(|e| TeamderError::Internal(e.to_string()))?;
+        update.insert("password_hash", hash);
+    }
+
+    update.insert("updated_at", bson::DateTime::from_chrono(Utc::now()));
+
+    state.db.user_repo().update(id, update).await?;
+
+    let updated = state
+        .db
+        .user_repo()
+        .find_by_id(id)
+        .await?
         .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+
+    Ok(Json(updated.into()))
+}
+
+#[rocket::delete("/users/<id>")]
+pub async fn delete_user(
+    state: &State<AppState>,
+    auth: AuthUser,
+    id: &str,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    if auth.user_id != id {
+        let caller = state
+            .db
+            .user_repo()
+            .find_by_id(&auth.user_id)
+            .await?
+            .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+        if !caller.is_admin {
+            return Err(TeamderError::Forbidden("Cannot delete another user".into()).into());
+        }
+    }
+
+    state.db.user_repo().delete(id).await?;
+    Ok(Json(SuccessResponse { success: true }))
+}
+
+#[rocket::post("/users/me/change-password", data = "<body>")]
+pub async fn change_password(
+    state: &State<AppState>,
+    auth: AuthUser,
+    body: Json<ChangePasswordRequest>,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    let req = body.into_inner();
+
+    let user = state
+        .db
+        .user_repo()
+        .find_by_id(&auth.user_id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+
     let valid = bcrypt::verify(&req.old_password, &user.password_hash)
         .map_err(|e| TeamderError::Internal(e.to_string()))?;
+
     if !valid {
-        return Err(TeamderError::Unauthorized.into());
+        return Err(TeamderError::Validation("Current password is incorrect".into()).into());
     }
-    if req.new_password.len() < 6 {
-        return Err(TeamderError::Validation("New password must be ≥ 6 characters".into()).into());
-    }
-    let hash = bcrypt::hash(&req.new_password, bcrypt::DEFAULT_COST)
-        .map_err(|e| TeamderError::Internal(e.to_string()))?;
-    state.users.set_password_hash(&user.id, &hash).await?;
-    Ok(Json(json!({ "success": true })))
-}
 
-/// POST /api/v1/users/me/onboard
-#[post("/me/onboard")]
-async fn complete_onboarding(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
-    let req = teamder_core::models::user::UpdateUserRequest {
-        name: None, role: None, department: None, year: None, location: None,
-        bio: None, skills: None, skill_tags: None, work_mode: None,
-        availability: None, hours_per_week: None, languages: None,
-        portfolio: None, avatar_url: None, resume_url: None,
-        onboarded: Some(true),
-        headline: None, notify_email: None, notify_in_app: None, is_public: None,
-        social_links: None, interests: None, timezone: None, goals: None,
-        free_days: None,
+    let new_hash =
+        bcrypt::hash(&req.new_password, 12).map_err(|e| TeamderError::Internal(e.to_string()))?;
+
+    let update = bson::doc! {
+        "password_hash": &new_hash,
+        "updated_at": bson::DateTime::from_chrono(Utc::now()),
     };
-    state.users.update(&auth.0.sub, &req).await?;
-    let _ = req;
-    Ok(Json(json!({ "success": true })))
+
+    state.db.user_repo().update(&auth.user_id, update).await?;
+
+    Ok(Json(SuccessResponse { success: true }))
 }
 
-pub fn routes() -> Vec<Route> {
-    routes![list_users, get_user, update_user, delete_user, me, change_password, complete_onboarding]
+#[rocket::post("/users/me/onboard")]
+pub async fn onboard(
+    state: &State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    state.db.user_repo().mark_onboarded(&auth.user_id).await?;
+    Ok(Json(SuccessResponse { success: true }))
 }

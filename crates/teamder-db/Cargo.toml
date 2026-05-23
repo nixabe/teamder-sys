@@ -1,19 +1,17 @@
 [package]
 name = "teamder-db"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
+version = "0.1.0"
+edition = "2021"
 
 [dependencies]
-teamder-core = { workspace = true }
-mongodb = { workspace = true }
-tokio = { workspace = true }
+teamder-core = { path = "../teamder-core" }
+mongodb = "3"
+bson = { version = "2", features = ["chrono-0_4"] }
+futures = "0.3"
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
-thiserror = { workspace = true }
-anyhow = { workspace = true }
 tracing = { workspace = true }
-futures-util = { workspace = true }
-bcrypt = { workspace = true }
+anyhow = { workspace = true }
+tokio = { version = "1", features = ["full"] }

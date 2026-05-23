@@ -1,46 +1,58 @@
-use rocket::{
-    http::Status,
-    request::Request,
-    response::{self, Responder, Response},
-    serde::json::Json,
-};
-use serde_json::json;
+use rocket::http::Status;
+use rocket::response::Responder;
+use rocket::serde::json::Json;
+use rocket::Request;
+use serde::Serialize;
 use teamder_core::error::TeamderError;
 
-/// Wraps `TeamderError` so Rocket can respond with JSON error bodies.
-#[derive(Debug)]
+/// JSON error body returned to the client.
+#[derive(Debug, Serialize)]
+pub struct ErrorBody {
+    pub code: String,
+    pub message: String,
+}
+
+/// JSON error envelope.
+#[derive(Debug, Serialize)]
+pub struct ErrorResponse {
+    pub error: ErrorBody,
+}
+
+/// Wrapper so we can implement Rocket's `Responder` for `TeamderError`.
 pub struct ApiError(pub TeamderError);
 
 impl From<TeamderError> for ApiError {
-    fn from(e: TeamderError) -> Self {
-        ApiError(e)
+    fn from(err: TeamderError) -> Self {
+        ApiError(err)
     }
 }
 
-impl<'r, 'o: 'r> Responder<'r, 'o> for ApiError {
-    fn respond_to(self, req: &'r Request<'_>) -> response::Result<'o> {
-        let (status, code) = match &self.0 {
-            TeamderError::NotFound(_) => (Status::NotFound, "not_found"),
-            TeamderError::Unauthorized => (Status::Unauthorized, "unauthorized"),
-            TeamderError::Forbidden => (Status::Forbidden, "forbidden"),
-            TeamderError::Validation(_) => (Status::UnprocessableEntity, "validation_error"),
-            TeamderError::Conflict(_) => (Status::Conflict, "conflict"),
-            TeamderError::Database(_) | TeamderError::Internal(_) => {
-                (Status::InternalServerError, "internal_error")
-            }
+impl ApiError {
+    fn code_string(&self) -> String {
+        match &self.0 {
+            TeamderError::NotFound(_) => "NOT_FOUND".to_string(),
+            TeamderError::Unauthorized(_) => "UNAUTHORIZED".to_string(),
+            TeamderError::Forbidden(_) => "FORBIDDEN".to_string(),
+            TeamderError::Validation(_) => "VALIDATION_ERROR".to_string(),
+            TeamderError::Conflict(_) => "CONFLICT".to_string(),
+            TeamderError::Database(_) => "DATABASE_ERROR".to_string(),
+            TeamderError::Internal(_) => "INTERNAL_ERROR".to_string(),
+        }
+    }
+}
+
+impl<'r> Responder<'r, 'static> for ApiError {
+    fn respond_to(self, req: &'r Request<'_>) -> rocket::response::Result<'static> {
+        let status =
+            Status::from_code(self.0.status_code()).unwrap_or(Status::InternalServerError);
+
+        let body = ErrorResponse {
+            error: ErrorBody {
+                code: self.code_string(),
+                message: self.0.message().to_string(),
+            },
         };
 
-        let body = json!({
-            "error": {
-                "code": code,
-                "message": self.0.to_string(),
-            }
-        });
-
-        Response::build_from(Json(body).respond_to(req)?)
-            .status(status)
-            .ok()
+        (status, Json(body)).respond_to(req)
     }
 }
-
-pub type ApiResult<T> = Result<Json<T>, ApiError>;

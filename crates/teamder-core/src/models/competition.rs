@@ -1,152 +1,189 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum CompetitionStatus {
-    Open,
-    ClosingSoon,
-    Upcoming,
-    Past,
-}
+// ── Sub-structs ──────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum PublishStatus {
-    Draft,
-    PendingReview,
-    Published,
-    Rejected,
-}
-
-fn default_publish_status() -> PublishStatus {
-    PublishStatus::Published
-}
-
-/// Registration record for a competition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Registration {
     pub user_id: String,
+    #[serde(default)]
     pub team_name: Option<String>,
     pub registered_at: DateTime<Utc>,
     #[serde(default)]
     pub motivation: Option<String>,
     #[serde(default)]
-    pub skills: Option<String>,
+    pub skills: Option<Vec<String>>,
     #[serde(default)]
     pub contact_email: Option<String>,
 }
 
-/// Core competition document in `competitions` collection.
+// ── Main document ────────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Competition {
     #[serde(rename = "_id")]
     pub id: String,
+
     pub name: String,
     pub organizer: String,
+
+    #[serde(default = "default_comp_icon")]
     pub icon: String,
+
+    #[serde(default)]
     pub icon_bg: String,
-    pub status: CompetitionStatus,
+
+    #[serde(default = "default_open")]
+    pub status: String,
+
+    #[serde(default)]
     pub prize: String,
+
+    #[serde(default = "default_min_team")]
     pub team_size_min: u8,
+
+    #[serde(default = "default_max_team")]
     pub team_size_max: u8,
+
+    #[serde(default)]
     pub deadline: Option<String>,
+
+    #[serde(default)]
     pub duration: String,
+
+    #[serde(default)]
     pub tags: Vec<String>,
+
+    #[serde(default)]
     pub description: String,
+
+    #[serde(default)]
     pub is_featured: bool,
+
     #[serde(default)]
     pub banner_image: Option<String>,
-    #[serde(default = "default_publish_status")]
-    pub publish_status: PublishStatus,
+
+    #[serde(default = "default_published")]
+    pub publish_status: String,
+
     #[serde(default)]
     pub publisher_id: Option<String>,
+
     #[serde(default)]
     pub rejected_note: Option<String>,
+
+    #[serde(default)]
     pub registrations: Vec<Registration>,
-    /// User IDs who clicked "I'm interested" — used for the interest counter
-    /// and to recommend the competition to similar users.
+
     #[serde(default)]
     pub interested_user_ids: Vec<String>,
-    /// Optional winner roster, set after the competition concludes.
+
     #[serde(default)]
     pub winners: Vec<String>,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-impl Competition {
-    pub fn new(
-        name: impl Into<String>,
-        organizer: impl Into<String>,
-        description: impl Into<String>,
-    ) -> Self {
-        let now = Utc::now();
-        Self {
-            id: Uuid::new_v4().to_string(),
-            name: name.into(),
-            organizer: organizer.into(),
-            icon: "Cp".into(),
-            icon_bg: "linear-gradient(135deg, #DD6E42, #B85530)".into(),
-            status: CompetitionStatus::Upcoming,
-            prize: "TBD".into(),
-            team_size_min: 2,
-            team_size_max: 5,
-            deadline: None,
-            duration: "TBD".into(),
-            tags: vec![],
-            description: description.into(),
-            is_featured: false,
-            banner_image: None,
-            publish_status: PublishStatus::Draft,
-            publisher_id: None,
-            rejected_note: None,
-            registrations: vec![],
-            interested_user_ids: vec![],
-            winners: vec![],
-            created_at: now,
-            updated_at: now,
-        }
-    }
+fn default_comp_icon() -> String {
+    "Cp".to_string()
 }
 
-#[derive(Debug, Deserialize)]
+fn default_open() -> String {
+    "open".to_string()
+}
+
+fn default_min_team() -> u8 {
+    2
+}
+
+fn default_max_team() -> u8 {
+    5
+}
+
+fn default_published() -> String {
+    "published".to_string()
+}
+
+// ── DTOs ─────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateCompetitionRequest {
     pub name: String,
     pub organizer: String,
-    pub description: String,
-    pub prize: String,
-    pub team_size_min: u8,
-    pub team_size_max: u8,
-    pub deadline: Option<String>,
-    pub duration: String,
-    pub tags: Vec<String>,
-    pub is_featured: Option<bool>,
+    #[serde(default)]
     pub icon: Option<String>,
+    #[serde(default)]
     pub icon_bg: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub prize: Option<String>,
+    #[serde(default)]
+    pub team_size_min: Option<u8>,
+    #[serde(default)]
+    pub team_size_max: Option<u8>,
+    #[serde(default)]
+    pub deadline: Option<String>,
+    #[serde(default)]
+    pub duration: Option<String>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub is_featured: Option<bool>,
+    #[serde(default)]
     pub banner_image: Option<String>,
+    #[serde(default)]
+    pub publish_status: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct RegisterCompetitionRequest {
-    pub team_name: Option<String>,
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UpdateCompetitionRequest {
     #[serde(default)]
-    pub motivation: Option<String>,
+    pub name: Option<String>,
     #[serde(default)]
-    pub skills: Option<String>,
+    pub organizer: Option<String>,
     #[serde(default)]
-    pub contact_email: Option<String>,
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub icon_bg: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub prize: Option<String>,
+    #[serde(default)]
+    pub team_size_min: Option<u8>,
+    #[serde(default)]
+    pub team_size_max: Option<u8>,
+    #[serde(default)]
+    pub deadline: Option<String>,
+    #[serde(default)]
+    pub duration: Option<String>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub is_featured: Option<bool>,
+    #[serde(default)]
+    pub banner_image: Option<String>,
+    #[serde(default)]
+    pub publish_status: Option<String>,
+    #[serde(default)]
+    pub rejected_note: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+/// API response — includes computed viewer-state fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompetitionResponse {
     pub id: String,
     pub name: String,
     pub organizer: String,
     pub icon: String,
     pub icon_bg: String,
-    pub status: CompetitionStatus,
+    pub status: String,
     pub prize: String,
     pub team_size_min: u8,
     pub team_size_max: u8,
@@ -156,47 +193,45 @@ pub struct CompetitionResponse {
     pub description: String,
     pub is_featured: bool,
     pub banner_image: Option<String>,
-    pub publish_status: PublishStatus,
+    pub publish_status: String,
     pub publisher_id: Option<String>,
     pub rejected_note: Option<String>,
-    pub registration_count: usize,
-    pub interested_count: usize,
     pub winners: Vec<String>,
     pub created_at: DateTime<Utc>,
-    /// True when the request was made by an authenticated user who has
-    /// already registered for this competition. Lets the frontend show
-    /// "✓ Registered" instead of "Register" without an extra round-trip.
-    #[serde(default)]
-    pub is_registered_by_viewer: bool,
-    /// True when the authenticated viewer has marked themselves as
-    /// interested. Used to toggle the ☆/★ Interested label.
-    #[serde(default)]
-    pub is_interested_by_viewer: bool,
-}
+    pub updated_at: DateTime<Utc>,
 
-#[derive(Debug, Deserialize)]
-pub struct RejectCompetitionRequest {
-    pub note: Option<String>,
-}
+    // Computed at response time
+    pub registration_count: usize,
+    pub interested_count: usize,
 
-impl From<Competition> for CompetitionResponse {
-    fn from(c: Competition) -> Self {
-        CompetitionResponse::from_competition(c, None)
-    }
+    /// Set at API response time based on the authenticated viewer.
+    #[serde(default)]
+    pub is_registered_by_viewer: Option<bool>,
+    #[serde(default)]
+    pub is_interested_by_viewer: Option<bool>,
+
+    /// Include full registrations only for owners / admins.
+    #[serde(default)]
+    pub registrations: Option<Vec<Registration>>,
 }
 
 impl CompetitionResponse {
-    /// Build a response tagged with whether `viewer_id` already registered
-    /// or marked interest. Pass `None` for unauthenticated requests.
-    pub fn from_competition(c: Competition, viewer_id: Option<&str>) -> Self {
-        let count = c.registrations.len();
-        let interested = c.interested_user_ids.len();
-        let registered_by_viewer = viewer_id
-            .map(|vid| c.registrations.iter().any(|r| r.user_id == vid))
-            .unwrap_or(false);
-        let interested_by_viewer = viewer_id
-            .map(|vid| c.interested_user_ids.iter().any(|u| u == vid))
-            .unwrap_or(false);
+    /// Build a response from a Competition document.
+    ///
+    /// `viewer_id` is the currently authenticated user (if any).
+    /// `include_registrations` controls whether the full list is exposed.
+    pub fn from_competition(
+        c: Competition,
+        viewer_id: Option<&str>,
+        include_registrations: bool,
+    ) -> Self {
+        let registration_count = c.registrations.len();
+        let interested_count = c.interested_user_ids.len();
+        let is_registered = viewer_id
+            .map(|vid| c.registrations.iter().any(|r| r.user_id == vid));
+        let is_interested = viewer_id
+            .map(|vid| c.interested_user_ids.iter().any(|uid| uid == vid));
+
         Self {
             id: c.id,
             name: c.name,
@@ -216,131 +251,18 @@ impl CompetitionResponse {
             publish_status: c.publish_status,
             publisher_id: c.publisher_id,
             rejected_note: c.rejected_note,
-            registration_count: count,
-            interested_count: interested,
             winners: c.winners,
             created_at: c.created_at,
-            is_registered_by_viewer: registered_by_viewer,
-            is_interested_by_viewer: interested_by_viewer,
+            updated_at: c.updated_at,
+            registration_count,
+            interested_count,
+            is_registered_by_viewer: is_registered,
+            is_interested_by_viewer: is_interested,
+            registrations: if include_registrations {
+                Some(c.registrations)
+            } else {
+                None
+            },
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::Utc;
-
-    fn make_competition() -> Competition {
-        Competition::new("Test Hackathon", "FJCU", "A great hackathon for students")
-    }
-
-    #[test]
-    fn test_default_status_upcoming() {
-        let c = make_competition();
-        assert_eq!(c.status, CompetitionStatus::Upcoming);
-    }
-
-    #[test]
-    fn test_default_not_featured() {
-        let c = make_competition();
-        assert!(!c.is_featured);
-    }
-
-    #[test]
-    fn test_default_registrations_empty() {
-        let c = make_competition();
-        assert!(c.registrations.is_empty());
-    }
-
-    #[test]
-    fn test_default_team_size() {
-        let c = make_competition();
-        assert_eq!(c.team_size_min, 2);
-        assert_eq!(c.team_size_max, 5);
-    }
-
-    #[test]
-    fn test_id_is_uuid_like() {
-        let c = make_competition();
-        assert_eq!(c.id.len(), 36);
-    }
-
-    #[test]
-    fn test_response_registration_count_zero() {
-        let c = make_competition();
-        let resp = CompetitionResponse::from(c);
-        assert_eq!(resp.registration_count, 0);
-    }
-
-    #[test]
-    fn test_response_registration_count_nonzero() {
-        let mut c = make_competition();
-        c.registrations.push(Registration {
-            user_id: "u1".into(),
-            team_name: None,
-            registered_at: Utc::now(),
-            motivation: None,
-            skills: None,
-            contact_email: None,
-        });
-        c.registrations.push(Registration {
-            user_id: "u2".into(),
-            team_name: Some("Team A".into()),
-            registered_at: Utc::now(),
-            motivation: None,
-            skills: None,
-            contact_email: None,
-        });
-        let resp = CompetitionResponse::from(c);
-        assert_eq!(resp.registration_count, 2);
-    }
-
-    #[test]
-    fn test_name_and_organizer_stored() {
-        let c = make_competition();
-        assert_eq!(c.name, "Test Hackathon");
-        assert_eq!(c.organizer, "FJCU");
-    }
-
-    #[test]
-    fn test_new_competition_default_publish_status_draft() {
-        let c = make_competition();
-        assert_eq!(c.publish_status, PublishStatus::Draft);
-    }
-
-    #[test]
-    fn test_new_competition_no_publisher_id() {
-        let c = make_competition();
-        assert!(c.publisher_id.is_none());
-        assert!(c.rejected_note.is_none());
-    }
-
-    #[test]
-    fn test_default_publish_status_serde_backward_compat() {
-        // Documents without publish_status field should default to Published
-        let json = r#"{"_id":"x","name":"N","organizer":"O","icon":"I","icon_bg":"bg","status":"upcoming","prize":"P","team_size_min":2,"team_size_max":5,"duration":"1m","tags":[],"description":"D","is_featured":false,"registrations":[],"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}"#;
-        let c: Competition = serde_json::from_str(json).unwrap();
-        assert_eq!(c.publish_status, PublishStatus::Published);
-    }
-
-    #[test]
-    fn test_publish_status_serde_round_trip() {
-        let s = serde_json::to_string(&PublishStatus::PendingReview).unwrap();
-        assert_eq!(s, "\"pending_review\"");
-        let back: PublishStatus = serde_json::from_str(&s).unwrap();
-        assert_eq!(back, PublishStatus::PendingReview);
-    }
-
-    #[test]
-    fn test_response_maps_publish_status_and_publisher_id() {
-        let mut c = make_competition();
-        c.publish_status = PublishStatus::Rejected;
-        c.publisher_id = Some("pub-1".into());
-        c.rejected_note = Some("Needs more detail".into());
-        let resp = CompetitionResponse::from(c);
-        assert_eq!(resp.publish_status, PublishStatus::Rejected);
-        assert_eq!(resp.publisher_id, Some("pub-1".into()));
-        assert_eq!(resp.rejected_note, Some("Needs more detail".into()));
     }
 }

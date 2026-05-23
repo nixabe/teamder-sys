@@ -1,415 +1,431 @@
-use rocket::{Route, State, serde::json::Json};
-use serde_json::{Value, json};
-use teamder_core::{
-    error::TeamderError,
-    models::competition::{
-        Competition, CompetitionResponse, CreateCompetitionRequest,
-        PublishStatus, RegisterCompetitionRequest, Registration,
-        RejectCompetitionRequest,
-    },
-};
 use chrono::Utc;
+use mongodb::bson;
+use rocket::serde::json::Json;
+use rocket::State;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::{error::ApiResult, guards::{AdminUser, AuthUser, OptionalAuth, PublisherUser}, state::AppState};
+use crate::error::ApiError;
+use crate::guards::{AdminUser, AuthUser, OptionalAuth, PublisherUser};
+use crate::state::AppState;
+use teamder_core::error::TeamderError;
+use teamder_core::models::competition::{
+    Competition, CompetitionResponse, CreateCompetitionRequest, Registration,
+    UpdateCompetitionRequest,
+};
 
-/// GET /api/v1/competitions
-#[get("/")]
-async fn list_competitions(viewer: OptionalAuth, state: &State<AppState>) -> ApiResult<Value> {
-    let viewer_id = viewer.0.as_ref().map(|c| c.sub.as_str());
-    let comps: Vec<CompetitionResponse> = state
-        .competitions
-        .list()
-        .await?
-        .into_iter()
-        .map(|c| CompetitionResponse::from_competition(c, viewer_id))
-        .collect();
+// ── DTOs ────────────────────────────────────────────────────────────────────
 
-    Ok(Json(json!({ "data": comps })))
+#[derive(Debug, Serialize)]
+pub struct PaginatedCompetitions {
+    pub competitions: Vec<CompetitionResponse>,
+    pub total: u64,
+    pub page: u64,
+    pub limit: i64,
 }
 
-/// GET /api/v1/competitions/featured
-#[get("/featured")]
-async fn featured_competitions(viewer: OptionalAuth, state: &State<AppState>) -> ApiResult<Value> {
-    let viewer_id = viewer.0.as_ref().map(|c| c.sub.as_str());
-    let comps: Vec<CompetitionResponse> = state
-        .competitions
-        .list_featured()
-        .await?
-        .into_iter()
-        .map(|c| CompetitionResponse::from_competition(c, viewer_id))
-        .collect();
-
-    Ok(Json(json!({ "data": comps })))
+#[derive(Debug, Serialize)]
+pub struct SuccessResponse {
+    pub success: bool,
 }
 
-/// GET /api/v1/competitions/mine  (publisher or admin)
-#[get("/mine")]
-async fn list_mine(publisher: PublisherUser, state: &State<AppState>) -> ApiResult<Value> {
-    let comps: Vec<CompetitionResponse> = state
-        .competitions
-        .list_by_publisher(&publisher.0.sub)
-        .await?
-        .into_iter()
-        .map(CompetitionResponse::from)
-        .collect();
-
-    Ok(Json(json!({ "data": comps })))
+#[derive(Debug, Deserialize)]
+pub struct RegisterBody {
+    #[serde(default)]
+    pub team_name: Option<String>,
+    #[serde(default)]
+    pub motivation: Option<String>,
+    #[serde(default)]
+    pub skills: Option<Vec<String>>,
+    #[serde(default)]
+    pub contact_email: Option<String>,
 }
 
-/// GET /api/v1/competitions/pending  (admin only)
-#[get("/pending")]
-async fn list_pending(_admin: AdminUser, state: &State<AppState>) -> ApiResult<Value> {
-    let comps: Vec<CompetitionResponse> = state
-        .competitions
-        .list_pending()
-        .await?
-        .into_iter()
-        .map(CompetitionResponse::from)
-        .collect();
-
-    Ok(Json(json!({ "data": comps })))
+#[derive(Debug, Serialize)]
+pub struct InterestResponse {
+    pub interested: bool,
 }
 
-/// GET /api/v1/competitions/<id>
-#[get("/<id>")]
-async fn get_competition(id: String, viewer: OptionalAuth, state: &State<AppState>) -> ApiResult<CompetitionResponse> {
-    let comp = state
-        .competitions
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Competition {} not found", id)))?;
-    let viewer_id = viewer.0.as_ref().map(|c| c.sub.as_str());
-    Ok(Json(CompetitionResponse::from_competition(comp, viewer_id)))
+#[derive(Debug, Deserialize)]
+pub struct WinnersBody {
+    pub winner_user_ids: Vec<String>,
 }
 
-/// POST /api/v1/competitions  (admin → Published immediately; publisher → Draft)
-#[post("/", data = "<req>")]
-async fn create_competition(
-    req: Json<CreateCompetitionRequest>,
-    auth: AuthUser,
+#[derive(Debug, Deserialize)]
+pub struct RejectBody {
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+// ── Routes ──────────────────────────────────────────────────────────────────
+
+#[rocket::get("/competitions?<page>&<limit>&<status>&<q>")]
+pub async fn list_competitions(
     state: &State<AppState>,
-) -> ApiResult<CompetitionResponse> {
-    if !auth.0.is_admin && !auth.0.is_publisher {
-        return Err(TeamderError::Forbidden.into());
+    page: Option<u64>,
+    limit: Option<i64>,
+    status: Option<String>,
+    q: Option<String>,
+) -> Result<Json<PaginatedCompetitions>, ApiError> {
+    let page = page.unwrap_or(1);
+    let limit = limit.unwrap_or(20);
+    let skip = (page.saturating_sub(1)) * (limit as u64);
+
+    // For public listing, always filter by published
+    let mut filter = bson::doc! { "publish_status": "published" };
+    if let Some(s) = &status {
+        filter.insert("status", s.as_str());
     }
 
-    let mut comp = Competition::new(&req.name, &req.organizer, &req.description);
-    comp.prize = req.prize.clone();
-    comp.team_size_min = req.team_size_min;
-    comp.team_size_max = req.team_size_max;
-    comp.deadline = req.deadline.clone();
-    comp.duration = req.duration.clone();
-    comp.tags = req.tags.clone();
-    comp.is_featured = req.is_featured.unwrap_or(false);
-    if let Some(v) = &req.icon { comp.icon = v.clone(); }
-    if let Some(v) = &req.icon_bg { comp.icon_bg = v.clone(); }
-    if req.banner_image.is_some() { comp.banner_image = req.banner_image.clone(); }
+    let (comps, _total) = state
+        .db
+        .competition_repo()
+        .list(status.as_deref(), q.as_deref(), skip, limit)
+        .await?;
 
-    if auth.0.is_admin {
-        comp.publish_status = PublishStatus::Published;
-    } else {
-        comp.publish_status = PublishStatus::Draft;
-        comp.publisher_id = Some(auth.0.sub.clone());
-    }
+    // Filter published only for public listing
+    let comps: Vec<CompetitionResponse> = comps
+        .into_iter()
+        .filter(|c| c.publish_status == "published")
+        .map(|c| CompetitionResponse::from_competition(c, None, false))
+        .collect();
+    let total = comps.len() as u64;
 
-    state.competitions.create(&comp).await?;
-    Ok(Json(comp.into()))
+    Ok(Json(PaginatedCompetitions {
+        competitions: comps,
+        total,
+        page,
+        limit,
+    }))
 }
 
-/// POST /api/v1/competitions/<id>/submit-review  (auth — must own the competition)
-#[post("/<id>/submit-review")]
-async fn submit_review(
-    id: String,
-    auth: AuthUser,
+#[rocket::get("/competitions/featured")]
+pub async fn featured_competitions(
     state: &State<AppState>,
-) -> ApiResult<Value> {
-    let comp = state
-        .competitions
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Competition {} not found", id)))?;
-
-    // Ownership check: must be the publisher or an admin
-    let is_owner = comp.publisher_id.as_deref() == Some(&auth.0.sub);
-    if !auth.0.is_admin && !is_owner {
-        return Err(TeamderError::Forbidden.into());
-    }
-
-    if comp.publish_status != PublishStatus::Draft {
-        return Err(TeamderError::Validation(
-            "Only draft competitions can be submitted for review".into()
-        ).into());
-    }
-
-    state.competitions.set_publish_status(&id, &PublishStatus::PendingReview, None).await?;
-    Ok(Json(json!({ "success": true })))
+) -> Result<Json<Vec<CompetitionResponse>>, ApiError> {
+    let comps = state.db.competition_repo().featured().await?;
+    let resp: Vec<CompetitionResponse> = comps
+        .into_iter()
+        .map(|c| CompetitionResponse::from_competition(c, None, false))
+        .collect();
+    Ok(Json(resp))
 }
 
-/// POST /api/v1/competitions/<id>/approve  (admin only)
-#[post("/<id>/approve")]
-async fn approve_competition(
-    id: String,
+#[rocket::get("/competitions/mine")]
+pub async fn my_competitions(
+    state: &State<AppState>,
+    auth: PublisherUser,
+) -> Result<Json<Vec<CompetitionResponse>>, ApiError> {
+    let comps = state
+        .db
+        .competition_repo()
+        .find_by_publisher(&auth.user_id)
+        .await?;
+    let resp: Vec<CompetitionResponse> = comps
+        .into_iter()
+        .map(|c| CompetitionResponse::from_competition(c, Some(&auth.user_id), true))
+        .collect();
+    Ok(Json(resp))
+}
+
+#[rocket::get("/competitions/pending")]
+pub async fn pending_competitions(
+    state: &State<AppState>,
     _admin: AdminUser,
-    state: &State<AppState>,
-) -> ApiResult<Value> {
-    let comp = state
-        .competitions
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Competition {} not found", id)))?;
-
-    if comp.publish_status != PublishStatus::PendingReview {
-        return Err(TeamderError::Validation(
-            "Only pending-review competitions can be approved".into()
-        ).into());
-    }
-
-    state.competitions.set_publish_status(&id, &PublishStatus::Published, None).await?;
-    Ok(Json(json!({ "success": true })))
+) -> Result<Json<Vec<CompetitionResponse>>, ApiError> {
+    let comps = state.db.competition_repo().find_pending().await?;
+    let resp: Vec<CompetitionResponse> = comps
+        .into_iter()
+        .map(|c| CompetitionResponse::from_competition(c, None, true))
+        .collect();
+    Ok(Json(resp))
 }
 
-/// POST /api/v1/competitions/<id>/reject  (admin only)
-#[post("/<id>/reject", data = "<req>")]
-async fn reject_competition(
-    id: String,
-    req: Json<RejectCompetitionRequest>,
-    _admin: AdminUser,
+#[rocket::get("/competitions/<id>")]
+pub async fn get_competition(
     state: &State<AppState>,
-) -> ApiResult<Value> {
+    id: &str,
+    viewer: OptionalAuth,
+) -> Result<Json<CompetitionResponse>, ApiError> {
     let comp = state
-        .competitions
-        .find_by_id(&id)
+        .db
+        .competition_repo()
+        .find_by_id(id)
         .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Competition {} not found", id)))?;
+        .ok_or_else(|| TeamderError::NotFound("Competition not found".into()))?;
 
-    if comp.publish_status != PublishStatus::PendingReview {
-        return Err(TeamderError::Validation(
-            "Only pending-review competitions can be rejected".into()
-        ).into());
-    }
+    let viewer_id = viewer.0.as_deref();
+    let include_regs = viewer_id
+        .map(|vid| {
+            comp.publisher_id.as_deref() == Some(vid)
+        })
+        .unwrap_or(false);
 
-    let note = req.0.note.as_deref();
-    state.competitions.set_publish_status(&id, &PublishStatus::Rejected, note).await?;
-    Ok(Json(json!({ "success": true })))
+    Ok(Json(CompetitionResponse::from_competition(
+        comp,
+        viewer_id,
+        include_regs,
+    )))
 }
 
-/// POST /api/v1/competitions/<id>/register  (auth)
-#[post("/<id>/register", data = "<req>")]
-async fn register_competition(
-    id: String,
-    req: Json<RegisterCompetitionRequest>,
-    auth: AuthUser,
+#[rocket::post("/competitions", data = "<body>")]
+pub async fn create_competition(
     state: &State<AppState>,
-) -> ApiResult<Value> {
-    let comp = state
-        .competitions
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Competition {} not found", id)))?;
+    auth: PublisherUser,
+    body: Json<CreateCompetitionRequest>,
+) -> Result<Json<CompetitionResponse>, ApiError> {
+    let req = body.into_inner();
+    let now = Utc::now();
+    let id = Uuid::new_v4().to_string();
 
-    // Reject duplicate registration — without this the user can spam-click
-    // "Register" and pile up rows in the registrations array.
-    if comp.registrations.iter().any(|r| r.user_id == auth.0.sub) {
-        return Err(TeamderError::Conflict(
-            "You have already registered for this competition".into()
-        ).into());
-    }
-
-    let registration = Registration {
-        user_id: auth.0.sub.clone(),
-        team_name: req.team_name.clone().filter(|s| !s.trim().is_empty()),
-        registered_at: Utc::now(),
-        motivation: req.motivation.clone().filter(|s| !s.trim().is_empty()),
-        skills: req.skills.clone().filter(|s| !s.trim().is_empty()),
-        contact_email: req.contact_email.clone().filter(|s| !s.trim().is_empty()),
+    let comp = Competition {
+        id: id.clone(),
+        name: req.name,
+        organizer: req.organizer,
+        icon: req.icon.unwrap_or_else(|| "Cp".to_string()),
+        icon_bg: req.icon_bg.unwrap_or_default(),
+        status: req.status.unwrap_or_else(|| "open".to_string()),
+        prize: req.prize.unwrap_or_default(),
+        team_size_min: req.team_size_min.unwrap_or(2),
+        team_size_max: req.team_size_max.unwrap_or(5),
+        deadline: req.deadline,
+        duration: req.duration.unwrap_or_default(),
+        tags: req.tags.unwrap_or_default(),
+        description: req.description.unwrap_or_default(),
+        is_featured: req.is_featured.unwrap_or(false),
+        banner_image: req.banner_image,
+        publish_status: req.publish_status.unwrap_or_else(|| "draft".to_string()),
+        publisher_id: Some(auth.user_id.clone()),
+        rejected_note: None,
+        registrations: vec![],
+        interested_user_ids: vec![],
+        winners: vec![],
+        created_at: now,
+        updated_at: now,
     };
 
-    state.competitions.add_registration(&id, &registration).await?;
+    state.db.competition_repo().create(&comp).await?;
 
-    Ok(Json(json!({ "success": true, "message": "Successfully registered" })))
+    Ok(Json(CompetitionResponse::from_competition(
+        comp,
+        Some(&auth.user_id),
+        true,
+    )))
 }
 
-/// GET /api/v1/competitions/<id>/registrations  (publisher-owner or admin)
-#[get("/<id>/registrations")]
-async fn list_registrations(
-    id: String,
-    auth: AuthUser,
+#[rocket::patch("/competitions/<id>", data = "<body>")]
+pub async fn update_competition(
     state: &State<AppState>,
-) -> ApiResult<Value> {
+    auth: PublisherUser,
+    id: &str,
+    body: Json<UpdateCompetitionRequest>,
+) -> Result<Json<CompetitionResponse>, ApiError> {
     let comp = state
-        .competitions
-        .find_by_id(&id)
+        .db
+        .competition_repo()
+        .find_by_id(id)
         .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Competition {} not found", id)))?;
+        .ok_or_else(|| TeamderError::NotFound("Competition not found".into()))?;
 
-    let is_owner = comp.publisher_id.as_deref() == Some(&auth.0.sub);
-    if !is_owner && !auth.0.is_admin {
-        return Err(TeamderError::Forbidden.into());
+    // Must be the owner or admin
+    let caller = state.db.user_repo().find_by_id(&auth.user_id).await?;
+    let is_owner = comp.publisher_id.as_deref() == Some(&auth.user_id);
+    let is_admin = caller.map(|u| u.is_admin).unwrap_or(false);
+    if !is_owner && !is_admin {
+        return Err(TeamderError::Forbidden("Not authorized".into()).into());
     }
 
-    // Batch-fetch user names so the frontend can display them.
-    let user_ids: Vec<&str> = comp.registrations.iter().map(|r| r.user_id.as_str()).collect();
-    let users = state.users.find_many_by_ids(&user_ids).await?;
+    let req = body.into_inner();
+    let mut update = bson::doc! {};
 
-    let data: Vec<Value> = comp.registrations.iter().map(|r| {
-        let name = users.iter().find(|u| u.id == r.user_id).map(|u| u.name.clone()).unwrap_or_else(|| r.user_id.clone());
-        json!({
-            "user_id": r.user_id,
-            "name": name,
-            "team_name": r.team_name,
-            "registered_at": r.registered_at,
-            "motivation": r.motivation,
-            "skills": r.skills,
-            "contact_email": r.contact_email,
-        })
-    }).collect();
-
-    Ok(Json(json!({ "data": data })))
-}
-
-/// POST /api/v1/competitions/<id>/interest  (auth) — toggle "I'm interested"
-#[post("/<id>/interest")]
-async fn toggle_interest(
-    id: String,
-    auth: AuthUser,
-    state: &State<AppState>,
-) -> ApiResult<Value> {
-    let comp = state
-        .competitions
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Competition {} not found", id)))?;
-
-    let already = comp.interested_user_ids.iter().any(|u| u == &auth.0.sub);
-    if already {
-        state.competitions.remove_interested(&id, &auth.0.sub).await?;
-    } else {
-        state.competitions.add_interested(&id, &auth.0.sub).await?;
+    if let Some(v) = &req.name { update.insert("name", v.as_str()); }
+    if let Some(v) = &req.organizer { update.insert("organizer", v.as_str()); }
+    if let Some(v) = &req.icon { update.insert("icon", v.as_str()); }
+    if let Some(v) = &req.icon_bg { update.insert("icon_bg", v.as_str()); }
+    if let Some(v) = &req.status { update.insert("status", v.as_str()); }
+    if let Some(v) = &req.prize { update.insert("prize", v.as_str()); }
+    if let Some(v) = req.team_size_min { update.insert("team_size_min", v as i32); }
+    if let Some(v) = req.team_size_max { update.insert("team_size_max", v as i32); }
+    if let Some(v) = &req.deadline { update.insert("deadline", v.as_str()); }
+    if let Some(v) = &req.duration { update.insert("duration", v.as_str()); }
+    if let Some(v) = &req.tags {
+        update.insert("tags", bson::to_bson(v).map_err(|e| TeamderError::Internal(e.to_string()))?);
     }
-    Ok(Json(json!({ "interested": !already })))
+    if let Some(v) = &req.description { update.insert("description", v.as_str()); }
+    if let Some(v) = req.is_featured { update.insert("is_featured", v); }
+    if let Some(v) = &req.banner_image { update.insert("banner_image", v.as_str()); }
+    if let Some(v) = &req.publish_status { update.insert("publish_status", v.as_str()); }
+    if let Some(v) = &req.rejected_note { update.insert("rejected_note", v.as_str()); }
+
+    update.insert("updated_at", bson::DateTime::from_chrono(Utc::now()));
+
+    state.db.competition_repo().update(id, update).await?;
+
+    let updated = state
+        .db
+        .competition_repo()
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("Competition not found".into()))?;
+
+    Ok(Json(CompetitionResponse::from_competition(
+        updated,
+        Some(&auth.user_id),
+        true,
+    )))
 }
 
-#[derive(Debug, serde::Deserialize)]
-struct SetWinnersRequest {
-    winner_user_ids: Vec<String>,
-}
-
-/// POST /api/v1/competitions/<id>/winners  (admin only)
-#[post("/<id>/winners", data = "<req>")]
-async fn set_winners(
-    id: String,
-    req: Json<SetWinnersRequest>,
-    _admin: AdminUser,
+#[rocket::post("/competitions/<id>/register", data = "<body>")]
+pub async fn register_competition(
     state: &State<AppState>,
-) -> ApiResult<Value> {
+    auth: AuthUser,
+    id: &str,
+    body: Json<RegisterBody>,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    let comp = state
+        .db
+        .competition_repo()
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("Competition not found".into()))?;
+
+    // Check not already registered
+    if comp.registrations.iter().any(|r| r.user_id == auth.user_id) {
+        return Err(TeamderError::Conflict("Already registered".into()).into());
+    }
+
+    let req = body.into_inner();
+    let registration = Registration {
+        user_id: auth.user_id,
+        team_name: req.team_name,
+        registered_at: Utc::now(),
+        motivation: req.motivation,
+        skills: req.skills,
+        contact_email: req.contact_email,
+    };
+
     state
-        .competitions
-        .set_winners(&id, req.0.winner_user_ids.clone())
+        .db
+        .competition_repo()
+        .register_user(id, &registration)
         .await?;
-    Ok(Json(json!({ "success": true, "count": req.0.winner_user_ids.len() })))
+
+    Ok(Json(SuccessResponse { success: true }))
 }
 
-/// PATCH /api/v1/competitions/<id>  (admin: anything; publisher: own Draft/Rejected only)
-#[patch("/<id>", data = "<req>")]
-async fn update_competition(
-    id: String,
-    req: Json<Value>,
-    auth: AuthUser,
+#[rocket::post("/competitions/<id>/interest")]
+pub async fn toggle_interest(
     state: &State<AppState>,
-) -> ApiResult<Value> {
-    use mongodb::bson::{Document, Bson};
-
-    if !auth.0.is_admin && !auth.0.is_publisher {
-        return Err(TeamderError::Forbidden.into());
-    }
-
-    let comp = state
-        .competitions
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Competition {} not found", id)))?;
-
-    if !auth.0.is_admin {
-        let is_owner = comp.publisher_id.as_deref() == Some(&auth.0.sub);
-        if !is_owner {
-            return Err(TeamderError::Forbidden.into());
-        }
-        if comp.publish_status != PublishStatus::Draft && comp.publish_status != PublishStatus::Rejected {
-            return Err(TeamderError::Validation(
-                "Only draft or rejected competitions can be edited".into()
-            ).into());
-        }
-    }
-
-    let allowed = ["name","organizer","description","prize","team_size_min","team_size_max",
-                   "deadline","duration","tags","is_featured","status","icon","icon_bg","banner_image"];
-    let mut patch = Document::new();
-    if let Some(obj) = req.0.as_object() {
-        for key in allowed {
-            if let Some(val) = obj.get(key) {
-                if let Ok(bson_val) = mongodb::bson::to_bson(val) {
-                    patch.insert(key, bson_val);
-                }
-            }
-        }
-    }
-    if patch.is_empty() {
-        return Ok(Json(json!({ "success": true })));
-    }
-    patch.insert("updated_at", Bson::String(Utc::now().to_rfc3339()));
-    state.competitions.update(&id, patch).await?;
-    Ok(Json(json!({ "success": true })))
-}
-
-/// DELETE /api/v1/competitions/<id>  (admin: anything; publisher: own Draft only)
-#[delete("/<id>")]
-async fn delete_competition(
-    id: String,
     auth: AuthUser,
-    state: &State<AppState>,
-) -> ApiResult<Value> {
-    if !auth.0.is_admin && !auth.0.is_publisher {
-        return Err(TeamderError::Forbidden.into());
-    }
+    id: &str,
+) -> Result<Json<InterestResponse>, ApiError> {
+    let interested = state
+        .db
+        .competition_repo()
+        .toggle_interest(id, &auth.user_id)
+        .await?;
 
-    let comp = state
-        .competitions
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Competition {} not found", id)))?;
-
-    if !auth.0.is_admin {
-        let is_owner = comp.publisher_id.as_deref() == Some(&auth.0.sub);
-        if !is_owner {
-            return Err(TeamderError::Forbidden.into());
-        }
-        if comp.publish_status != PublishStatus::Draft {
-            return Err(TeamderError::Validation(
-                "Only draft competitions can be deleted by publishers".into()
-            ).into());
-        }
-    }
-
-    state.competitions.delete(&id).await?;
-    Ok(Json(json!({ "success": true })))
+    Ok(Json(InterestResponse { interested }))
 }
 
-pub fn routes() -> Vec<Route> {
-    routes![
-        list_competitions,
-        featured_competitions,
-        list_mine,
-        list_pending,
-        get_competition,
-        create_competition,
-        submit_review,
-        approve_competition,
-        reject_competition,
-        update_competition,
-        delete_competition,
-        register_competition,
-        list_registrations,
-        toggle_interest,
-        set_winners
-    ]
+#[rocket::get("/competitions/<id>/registrations")]
+pub async fn get_registrations(
+    state: &State<AppState>,
+    auth: PublisherUser,
+    id: &str,
+) -> Result<Json<Vec<Registration>>, ApiError> {
+    let comp = state
+        .db
+        .competition_repo()
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("Competition not found".into()))?;
+
+    // Must be owner or admin
+    let caller = state.db.user_repo().find_by_id(&auth.user_id).await?;
+    let is_owner = comp.publisher_id.as_deref() == Some(&auth.user_id);
+    let is_admin = caller.map(|u| u.is_admin).unwrap_or(false);
+    if !is_owner && !is_admin {
+        return Err(TeamderError::Forbidden("Not authorized".into()).into());
+    }
+
+    Ok(Json(comp.registrations))
+}
+
+#[rocket::post("/competitions/<id>/submit-review")]
+pub async fn submit_review(
+    state: &State<AppState>,
+    auth: PublisherUser,
+    id: &str,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    let comp = state
+        .db
+        .competition_repo()
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("Competition not found".into()))?;
+
+    if comp.publisher_id.as_deref() != Some(&auth.user_id) {
+        return Err(TeamderError::Forbidden("Not the publisher".into()).into());
+    }
+
+    if comp.publish_status != "draft" {
+        return Err(TeamderError::Validation("Only drafts can be submitted for review".into()).into());
+    }
+
+    state
+        .db
+        .competition_repo()
+        .set_publish_status(id, "pending_review", None)
+        .await?;
+
+    Ok(Json(SuccessResponse { success: true }))
+}
+
+#[rocket::post("/competitions/<id>/approve")]
+pub async fn approve_competition(
+    state: &State<AppState>,
+    _admin: AdminUser,
+    id: &str,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    state
+        .db
+        .competition_repo()
+        .set_publish_status(id, "published", None)
+        .await?;
+
+    Ok(Json(SuccessResponse { success: true }))
+}
+
+#[rocket::post("/competitions/<id>/reject", data = "<body>")]
+pub async fn reject_competition(
+    state: &State<AppState>,
+    _admin: AdminUser,
+    id: &str,
+    body: Json<RejectBody>,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    let req = body.into_inner();
+    state
+        .db
+        .competition_repo()
+        .set_publish_status(id, "rejected", req.note.as_deref())
+        .await?;
+
+    Ok(Json(SuccessResponse { success: true }))
+}
+
+#[rocket::post("/competitions/<id>/winners", data = "<body>")]
+pub async fn set_winners(
+    state: &State<AppState>,
+    _admin: AdminUser,
+    id: &str,
+    body: Json<WinnersBody>,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    state
+        .db
+        .competition_repo()
+        .set_winners(id, &body.winner_user_ids)
+        .await?;
+
+    Ok(Json(SuccessResponse { success: true }))
 }

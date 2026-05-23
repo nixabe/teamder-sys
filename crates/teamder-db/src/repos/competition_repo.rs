@@ -1,169 +1,264 @@
 use chrono::Utc;
-use futures_util::TryStreamExt;
-use mongodb::{Collection, bson::doc};
-use teamder_core::{error::TeamderError, models::competition::{Competition, PublishStatus}};
-use crate::DbClient;
+use futures::TryStreamExt;
+use mongodb::bson::{self, doc, Regex as BsonRegex};
+use mongodb::options::FindOptions;
+use mongodb::{Collection, Database};
+use teamder_core::error::TeamderError;
+use teamder_core::models::competition::{Competition, Registration};
 
 pub struct CompetitionRepo {
-    col: Collection<Competition>,
+    collection: Collection<Competition>,
 }
 
 impl CompetitionRepo {
-    pub fn new(db: &DbClient) -> Self {
-        Self { col: db.db.collection("competitions") }
+    pub fn new(db: &Database) -> Self {
+        Self {
+            collection: db.collection::<Competition>("competitions"),
+        }
     }
 
     pub async fn create(&self, comp: &Competition) -> Result<(), TeamderError> {
-        self.col.insert_one(comp).await
+        self.collection
+            .insert_one(comp)
+            .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
 
     pub async fn find_by_id(&self, id: &str) -> Result<Option<Competition>, TeamderError> {
-        self.col.find_one(doc! { "_id": id }).await
+        self.collection
+            .find_one(doc! { "_id": id })
+            .await
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
-    pub async fn list(&self) -> Result<Vec<Competition>, TeamderError> {
-        use mongodb::options::FindOptions;
-        let opts = FindOptions::builder().sort(doc! { "created_at": -1 }).build();
-        let cursor = self.col.find(doc! { "publish_status": "published" }).with_options(opts).await
+    pub async fn list(
+        &self,
+        status: Option<&str>,
+        query: Option<&str>,
+        skip: u64,
+        limit: i64,
+    ) -> Result<(Vec<Competition>, u64), TeamderError> {
+        let mut filter = doc! {};
+
+        if let Some(s) = status {
+            filter.insert("status", s);
+        }
+
+        if let Some(q) = query {
+            if !q.is_empty() {
+                let regex = BsonRegex {
+                    pattern: q.to_string(),
+                    options: "i".to_string(),
+                };
+                filter.insert(
+                    "$or",
+                    bson::bson!([
+                        { "name": { "$regex": &regex.pattern, "$options": &regex.options } },
+                        { "description": { "$regex": &regex.pattern, "$options": &regex.options } },
+                    ]),
+                );
+            }
+        }
+
+        let total = self
+            .collection
+            .count_documents(filter.clone())
+            .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
-        cursor.try_collect().await
+
+        let opts = FindOptions::builder()
+            .skip(skip)
+            .limit(limit)
+            .sort(doc! { "created_at": -1 })
+            .build();
+
+        let cursor = self
+            .collection
+            .find(filter)
+            .with_options(opts)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+
+        let comps: Vec<Competition> = cursor
+            .try_collect()
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+
+        Ok((comps, total))
+    }
+
+    pub async fn featured(&self) -> Result<Vec<Competition>, TeamderError> {
+        let filter = doc! {
+            "is_featured": true,
+            "publish_status": "published",
+        };
+        let cursor = self
+            .collection
+            .find(filter)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor
+            .try_collect()
+            .await
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
-    pub async fn list_featured(&self) -> Result<Vec<Competition>, TeamderError> {
-        let cursor = self.col.find(doc! { "is_featured": true, "publish_status": "published" }).await
+    pub async fn update(&self, id: &str, update: bson::Document) -> Result<(), TeamderError> {
+        self.collection
+            .update_one(doc! { "_id": id }, doc! { "$set": update })
+            .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
-        cursor.try_collect().await
-            .map_err(|e| TeamderError::Database(e.to_string()))
+        Ok(())
     }
 
-    pub async fn list_all(&self) -> Result<Vec<Competition>, TeamderError> {
-        use mongodb::options::FindOptions;
-        let opts = FindOptions::builder().sort(doc! { "created_at": -1 }).build();
-        let cursor = self.col.find(doc! {}).with_options(opts).await
+    pub async fn register_user(
+        &self,
+        id: &str,
+        registration: &Registration,
+    ) -> Result<(), TeamderError> {
+        let reg_bson =
+            bson::to_bson(registration).map_err(|e| TeamderError::Database(e.to_string()))?;
+        self.collection
+            .update_one(
+                doc! { "_id": id },
+                doc! {
+                    "$push": { "registrations": reg_bson },
+                    "$set": { "updated_at": bson::DateTime::from_chrono(Utc::now()) },
+                },
+            )
+            .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
-        cursor.try_collect().await
-            .map_err(|e| TeamderError::Database(e.to_string()))
+        Ok(())
     }
 
-    pub async fn list_by_publisher(&self, publisher_id: &str) -> Result<Vec<Competition>, TeamderError> {
-        use mongodb::options::FindOptions;
-        let opts = FindOptions::builder().sort(doc! { "created_at": -1 }).build();
-        let cursor = self.col.find(doc! { "publisher_id": publisher_id }).with_options(opts).await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        cursor.try_collect().await
-            .map_err(|e| TeamderError::Database(e.to_string()))
+    /// Toggle interest for a user. Returns `true` if now interested, `false` if removed.
+    pub async fn toggle_interest(
+        &self,
+        id: &str,
+        user_id: &str,
+    ) -> Result<bool, TeamderError> {
+        // Check if user is already interested
+        let comp = self.find_by_id(id).await?;
+        let comp = comp.ok_or_else(|| TeamderError::NotFound("Competition not found".into()))?;
+
+        let is_interested = comp.interested_user_ids.iter().any(|uid| uid == user_id);
+
+        if is_interested {
+            // Remove interest
+            self.collection
+                .update_one(
+                    doc! { "_id": id },
+                    doc! {
+                        "$pull": { "interested_user_ids": user_id },
+                        "$set": { "updated_at": bson::DateTime::from_chrono(Utc::now()) },
+                    },
+                )
+                .await
+                .map_err(|e| TeamderError::Database(e.to_string()))?;
+            Ok(false)
+        } else {
+            // Add interest
+            self.collection
+                .update_one(
+                    doc! { "_id": id },
+                    doc! {
+                        "$push": { "interested_user_ids": user_id },
+                        "$set": { "updated_at": bson::DateTime::from_chrono(Utc::now()) },
+                    },
+                )
+                .await
+                .map_err(|e| TeamderError::Database(e.to_string()))?;
+            Ok(true)
+        }
     }
 
-    pub async fn list_pending(&self) -> Result<Vec<Competition>, TeamderError> {
-        use mongodb::options::FindOptions;
-        let opts = FindOptions::builder().sort(doc! { "created_at": -1 }).build();
-        let cursor = self.col.find(doc! { "publish_status": "pending_review" }).with_options(opts).await
+    pub async fn set_winners(&self, id: &str, winner_ids: &[String]) -> Result<(), TeamderError> {
+        let winners_bson: Vec<bson::Bson> =
+            winner_ids.iter().map(|w| bson::Bson::String(w.clone())).collect();
+        self.collection
+            .update_one(
+                doc! { "_id": id },
+                doc! {
+                    "$set": {
+                        "winners": winners_bson,
+                        "updated_at": bson::DateTime::from_chrono(Utc::now()),
+                    }
+                },
+            )
+            .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
-        cursor.try_collect().await
-            .map_err(|e| TeamderError::Database(e.to_string()))
+        Ok(())
     }
 
     pub async fn set_publish_status(
         &self,
         id: &str,
-        status: &PublishStatus,
-        rejected_note: Option<&str>,
+        status: &str,
+        note: Option<&str>,
     ) -> Result<(), TeamderError> {
-        let status_str = serde_json::to_value(status)
-            .ok()
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-            .unwrap_or_default();
-        let mut patch = doc! {
-            "publish_status": &status_str,
-            "updated_at": Utc::now().to_rfc3339(),
+        let mut set = doc! {
+            "publish_status": status,
+            "updated_at": bson::DateTime::from_chrono(Utc::now()),
         };
-        match rejected_note {
-            Some(note) => { patch.insert("rejected_note", note); }
-            None => { patch.insert("rejected_note", mongodb::bson::Bson::Null); }
+        if let Some(n) = note {
+            set.insert("rejected_note", n);
         }
-        self.col
-            .update_one(doc! { "_id": id }, doc! { "$set": patch })
+        self.collection
+            .update_one(doc! { "_id": id }, doc! { "$set": set })
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
 
-    pub async fn add_registration(
+    pub async fn find_by_publisher(
         &self,
-        comp_id: &str,
-        reg: &teamder_core::models::competition::Registration,
-    ) -> Result<(), TeamderError> {
-        let reg_bson = mongodb::bson::to_bson(reg)
-            .map_err(|e| TeamderError::Internal(e.to_string()))?;
-        self.col
-            .update_one(
-                doc! { "_id": comp_id },
-                doc! { "$push": { "registrations": reg_bson } },
-            )
+        publisher_id: &str,
+    ) -> Result<Vec<Competition>, TeamderError> {
+        let cursor = self
+            .collection
+            .find(doc! { "publisher_id": publisher_id })
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
-        Ok(())
+        cursor
+            .try_collect()
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
-    /// Add user to interested list (idempotent).
-    pub async fn add_interested(&self, comp_id: &str, user_id: &str) -> Result<(), TeamderError> {
-        self.col
-            .update_one(
-                doc! { "_id": comp_id },
-                doc! { "$addToSet": { "interested_user_ids": user_id } },
-            )
+    pub async fn find_pending(&self) -> Result<Vec<Competition>, TeamderError> {
+        let cursor = self
+            .collection
+            .find(doc! { "publish_status": "pending_review" })
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    pub async fn remove_interested(&self, comp_id: &str, user_id: &str) -> Result<(), TeamderError> {
-        self.col
-            .update_one(
-                doc! { "_id": comp_id },
-                doc! { "$pull": { "interested_user_ids": user_id } },
-            )
+        cursor
+            .try_collect()
             .await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    pub async fn set_winners(&self, comp_id: &str, winners: Vec<String>) -> Result<(), TeamderError> {
-        self.col
-            .update_one(
-                doc! { "_id": comp_id },
-                doc! { "$set": { "winners": winners } },
-            )
-            .await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    pub async fn update(&self, id: &str, patch: mongodb::bson::Document) -> Result<(), TeamderError> {
-        self.col
-            .update_one(
-                doc! { "_id": id },
-                doc! { "$set": patch },
-            )
-            .await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    pub async fn delete(&self, id: &str) -> Result<(), TeamderError> {
-        self.col
-            .delete_one(doc! { "_id": id })
-            .await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        Ok(())
+            .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
     pub async fn count(&self) -> Result<u64, TeamderError> {
-        self.col.count_documents(doc! {}).await
+        self.collection
+            .count_documents(doc! {})
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    pub async fn search(&self, q: &str, limit: i64) -> Result<Vec<Competition>, TeamderError> {
+        let opts = FindOptions::builder().limit(limit).build();
+        let filter = doc! {
+            "name": { "$regex": q, "$options": "i" }
+        };
+        let cursor = self
+            .collection
+            .find(filter)
+            .with_options(opts)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor
+            .try_collect()
+            .await
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 }

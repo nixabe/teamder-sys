@@ -1,63 +1,38 @@
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
-use chrono::{DateTime, Utc};
-use teamder_db::{
-    DbClient,
-    repos::{
-        BookmarkRepo, CompetitionRepo, CompetitionTeamRepo, InviteRepo, JoinRequestRepo,
-        MessageRepo, NotificationRepo, PeerReviewRepo, ProjectRepo, ProjectUpdateRepo,
-        SkillCatalogRepo, StudyGroupRepo, UserRepo,
-    },
-};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use teamder_db::client::DbClient;
+use tokio::sync::broadcast;
 
-use crate::chat::ChatState;
-
-/// Shared application state injected into every Rocket handler.
+/// Application-wide state managed by Rocket.
+///
+/// Injected into route handlers via `&State<AppState>`.
 pub struct AppState {
-    pub users: UserRepo,
-    pub projects: ProjectRepo,
-    pub competitions: CompetitionRepo,
-    pub study_groups: StudyGroupRepo,
-    pub invites: InviteRepo,
-    pub messages: MessageRepo,
-    pub join_requests: JoinRequestRepo,
-    pub peer_reviews: PeerReviewRepo,
-    pub notifications: NotificationRepo,
-    pub competition_teams: CompetitionTeamRepo,
-    pub bookmarks: BookmarkRepo,
-    pub project_updates: ProjectUpdateRepo,
-    pub skill_catalog: SkillCatalogRepo,
-    pub chat: ChatState,
+    pub db: DbClient,
     pub jwt_secret: String,
-    /// Tracks when a user last left a project. Key = "{user_id}:{project_id}"
-    pub leave_log: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
+    pub chat_state: ChatState,
 }
 
-impl AppState {
-    pub fn new(db: DbClient) -> Self {
-        let jwt_secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "teamder-dev-secret-change-in-production".to_string());
-        Self::new_with_secret(db, jwt_secret)
+/// Manages per-user broadcast channels for real-time chat via WebSocket.
+pub struct ChatState {
+    pub channels: Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>,
+}
+
+impl ChatState {
+    pub fn new() -> Self {
+        Self {
+            channels: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
-    pub fn new_with_secret(db: DbClient, jwt_secret: String) -> Self {
-        Self {
-            users: UserRepo::new(&db),
-            projects: ProjectRepo::new(&db),
-            competitions: CompetitionRepo::new(&db),
-            study_groups: StudyGroupRepo::new(&db),
-            invites: InviteRepo::new(&db),
-            messages: MessageRepo::new(&db),
-            join_requests: JoinRequestRepo::new(&db),
-            peer_reviews: PeerReviewRepo::new(&db),
-            notifications: NotificationRepo::new(&db),
-            competition_teams: CompetitionTeamRepo::new(&db),
-            bookmarks: BookmarkRepo::new(&db),
-            project_updates: ProjectUpdateRepo::new(&db),
-            skill_catalog: SkillCatalogRepo::new(&db),
-            chat: ChatState::new(),
-            jwt_secret,
-            leave_log: Arc::new(Mutex::new(HashMap::new())),
-        }
+    /// Returns an existing broadcast sender for the given user_id,
+    /// or creates a new one with a capacity of 64 messages.
+    pub fn get_or_create_channel(&self, user_id: &str) -> broadcast::Sender<String> {
+        let mut map = self.channels.lock().unwrap();
+        map.entry(user_id.to_string())
+            .or_insert_with(|| {
+                let (tx, _) = broadcast::channel(64);
+                tx
+            })
+            .clone()
     }
 }

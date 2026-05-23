@@ -1,90 +1,125 @@
-use futures_util::TryStreamExt;
-use mongodb::{Collection, bson::{doc, Document}};
-use teamder_core::{error::TeamderError, models::study_group::StudyGroup};
-use crate::DbClient;
+use chrono::Utc;
+use futures::TryStreamExt;
+use mongodb::bson::{self, doc};
+use mongodb::options::FindOptions;
+use mongodb::{Collection, Database};
+use teamder_core::error::TeamderError;
+use teamder_core::models::study_group::{GroupMember, StudyGroup, StudyNote};
 
 pub struct StudyGroupRepo {
-    col: Collection<StudyGroup>,
+    collection: Collection<StudyGroup>,
 }
 
 impl StudyGroupRepo {
-    pub fn new(db: &DbClient) -> Self {
-        Self { col: db.db.collection("study_groups") }
+    pub fn new(db: &Database) -> Self {
+        Self {
+            collection: db.collection::<StudyGroup>("study_groups"),
+        }
     }
 
     pub async fn create(&self, group: &StudyGroup) -> Result<(), TeamderError> {
-        self.col.insert_one(group).await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    pub async fn find_by_id(&self, id: &str) -> Result<Option<StudyGroup>, TeamderError> {
-        self.col.find_one(doc! { "_id": id }).await
-            .map_err(|e| TeamderError::Database(e.to_string()))
-    }
-
-    pub async fn list(&self, limit: i64, skip: u64) -> Result<Vec<StudyGroup>, TeamderError> {
-        use mongodb::options::FindOptions;
-        let opts = FindOptions::builder()
-            .limit(limit)
-            .skip(skip)
-            .sort(doc! { "created_at": -1 })
-            .build();
-        let cursor = self.col.find(doc! {}).with_options(opts).await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        cursor.try_collect().await
-            .map_err(|e| TeamderError::Database(e.to_string()))
-    }
-
-    pub async fn list_by_member(&self, user_id: &str) -> Result<Vec<StudyGroup>, TeamderError> {
-        let cursor = self.col.find(doc! { "members.user_id": user_id }).await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        cursor.try_collect().await
-            .map_err(|e| TeamderError::Database(e.to_string()))
-    }
-
-    pub async fn list_by_creator(&self, user_id: &str) -> Result<Vec<StudyGroup>, TeamderError> {
-        let cursor = self.col.find(doc! { "created_by": user_id }).await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        cursor.try_collect().await
-            .map_err(|e| TeamderError::Database(e.to_string()))
-    }
-
-    pub async fn list_open(&self) -> Result<Vec<StudyGroup>, TeamderError> {
-        let cursor = self.col.find(doc! { "is_open": true }).await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        cursor.try_collect().await
-            .map_err(|e| TeamderError::Database(e.to_string()))
-    }
-
-    pub async fn add_member(
-        &self,
-        group_id: &str,
-        member: &teamder_core::models::study_group::GroupMember,
-    ) -> Result<(), TeamderError> {
-        let member_bson = mongodb::bson::to_bson(member)
-            .map_err(|e| TeamderError::Internal(e.to_string()))?;
-        self.col
-            .update_one(
-                doc! { "_id": group_id },
-                doc! { "$push": { "members": member_bson } },
-            )
+        self.collection
+            .insert_one(group)
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
 
-    pub async fn checkin(&self, group_id: &str, user_id: &str) -> Result<(), TeamderError> {
-        let now = chrono::Utc::now().to_rfc3339();
-        self.col
+    pub async fn find_by_id(&self, id: &str) -> Result<Option<StudyGroup>, TeamderError> {
+        self.collection
+            .find_one(doc! { "_id": id })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    pub async fn list(
+        &self,
+        open_only: bool,
+        skip: u64,
+        limit: i64,
+    ) -> Result<(Vec<StudyGroup>, u64), TeamderError> {
+        let filter = if open_only {
+            doc! { "is_open": true }
+        } else {
+            doc! {}
+        };
+
+        let total = self
+            .collection
+            .count_documents(filter.clone())
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+
+        let opts = FindOptions::builder()
+            .skip(skip)
+            .limit(limit)
+            .sort(doc! { "created_at": -1 })
+            .build();
+
+        let cursor = self
+            .collection
+            .find(filter)
+            .with_options(opts)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+
+        let groups: Vec<StudyGroup> = cursor
+            .try_collect()
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+
+        Ok((groups, total))
+    }
+
+    pub async fn find_by_creator(&self, user_id: &str) -> Result<Vec<StudyGroup>, TeamderError> {
+        let cursor = self
+            .collection
+            .find(doc! { "created_by": user_id })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor
+            .try_collect()
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    pub async fn find_joined(&self, user_id: &str) -> Result<Vec<StudyGroup>, TeamderError> {
+        let cursor = self
+            .collection
+            .find(doc! { "members.user_id": user_id })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor
+            .try_collect()
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    pub async fn update(&self, id: &str, update: bson::Document) -> Result<(), TeamderError> {
+        self.collection
+            .update_one(doc! { "_id": id }, doc! { "$set": update })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn delete(&self, id: &str) -> Result<(), TeamderError> {
+        self.collection
+            .delete_one(doc! { "_id": id })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn add_member(&self, id: &str, member: &GroupMember) -> Result<(), TeamderError> {
+        let member_bson =
+            bson::to_bson(member).map_err(|e| TeamderError::Database(e.to_string()))?;
+        self.collection
             .update_one(
-                doc! { "_id": group_id, "members.user_id": user_id },
+                doc! { "_id": id },
                 doc! {
-                    "$set": {
-                        "members.$.last_checkin": &now,
-                        "updated_at": &now,
-                    },
-                    "$inc": { "members.$.streak": 1 }
+                    "$push": { "members": member_bson },
+                    "$set": { "updated_at": bson::DateTime::from_chrono(Utc::now()) },
                 },
             )
             .await
@@ -92,108 +127,116 @@ impl StudyGroupRepo {
         Ok(())
     }
 
-    pub async fn add_note(
-        &self,
-        group_id: &str,
-        note: &teamder_core::models::study_group::StudyNote,
-    ) -> Result<(), TeamderError> {
-        let note_bson = mongodb::bson::to_bson(note)
-            .map_err(|e| TeamderError::Internal(e.to_string()))?;
-        self.col
+    pub async fn remove_member(&self, id: &str, user_id: &str) -> Result<(), TeamderError> {
+        self.collection
             .update_one(
-                doc! { "_id": group_id },
-                doc! { "$push": { "notes": note_bson } },
+                doc! { "_id": id },
+                doc! {
+                    "$pull": { "members": { "user_id": user_id } },
+                    "$set": { "updated_at": bson::DateTime::from_chrono(Utc::now()) },
+                },
             )
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
 
-    pub async fn remove_note(
-        &self,
-        group_id: &str,
-        note_id: &str,
-    ) -> Result<(), TeamderError> {
-        self.col
+    pub async fn checkin(&self, id: &str, user_id: &str) -> Result<(), TeamderError> {
+        let now = bson::DateTime::from_chrono(Utc::now());
+        self.collection
             .update_one(
-                doc! { "_id": group_id },
-                doc! { "$pull": { "notes": { "id": note_id } } },
+                doc! { "_id": id, "members.user_id": user_id },
+                doc! {
+                    "$set": {
+                        "members.$.last_checkin": now,
+                        "updated_at": now,
+                    },
+                    "$inc": { "members.$.streak": 1 },
+                },
             )
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
 
-    pub async fn remove_member(
-        &self,
-        group_id: &str,
-        user_id: &str,
-    ) -> Result<(), TeamderError> {
-        self.col
+    pub async fn add_note(&self, id: &str, note: &StudyNote) -> Result<(), TeamderError> {
+        let note_bson =
+            bson::to_bson(note).map_err(|e| TeamderError::Database(e.to_string()))?;
+        self.collection
             .update_one(
-                doc! { "_id": group_id },
-                doc! { "$pull": { "members": { "user_id": user_id } } },
+                doc! { "_id": id },
+                doc! {
+                    "$push": { "notes": note_bson },
+                    "$set": { "updated_at": bson::DateTime::from_chrono(Utc::now()) },
+                },
             )
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
 
-    pub async fn set_status(
-        &self,
-        group_id: &str,
-        status: &str,
-    ) -> Result<(), TeamderError> {
-        self.col
+    pub async fn delete_note(&self, id: &str, note_id: &str) -> Result<(), TeamderError> {
+        self.collection
             .update_one(
-                doc! { "_id": group_id },
-                doc! { "$set": { "status": status, "updated_at": chrono::Utc::now().to_rfc3339() } },
+                doc! { "_id": id },
+                doc! {
+                    "$pull": { "notes": { "id": note_id } },
+                    "$set": { "updated_at": bson::DateTime::from_chrono(Utc::now()) },
+                },
             )
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
 
-    pub async fn update_progress(
-        &self,
-        group_id: &str,
-        current_week: u8,
-    ) -> Result<(), TeamderError> {
-        self.col
+    pub async fn update_progress(&self, id: &str, current_week: u8) -> Result<(), TeamderError> {
+        self.collection
             .update_one(
-                doc! { "_id": group_id },
-                doc! { "$set": {
-                    "current_week": current_week as i32,
-                    "updated_at": chrono::Utc::now().to_rfc3339(),
-                } },
+                doc! { "_id": id },
+                doc! {
+                    "$set": {
+                        "current_week": current_week as i32,
+                        "updated_at": bson::DateTime::from_chrono(Utc::now()),
+                    }
+                },
             )
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
 
-    pub async fn update(&self, group_id: &str, mut fields: Document) -> Result<(), TeamderError> {
-        fields.insert("updated_at", chrono::Utc::now().to_rfc3339());
-        self.col
+    pub async fn set_status(&self, id: &str, status: &str) -> Result<(), TeamderError> {
+        self.collection
             .update_one(
-                doc! { "_id": group_id },
-                doc! { "$set": fields },
+                doc! { "_id": id },
+                doc! { "$set": { "status": status, "updated_at": bson::DateTime::from_chrono(Utc::now()) } },
             )
-            .await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    pub async fn delete(&self, id: &str) -> Result<(), TeamderError> {
-        self.col
-            .delete_one(doc! { "_id": id })
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
 
     pub async fn count(&self) -> Result<u64, TeamderError> {
-        self.col.count_documents(doc! {}).await
+        self.collection
+            .count_documents(doc! {})
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    pub async fn search(&self, q: &str, limit: i64) -> Result<Vec<StudyGroup>, TeamderError> {
+        let opts = FindOptions::builder().limit(limit).build();
+        let filter = doc! {
+            "name": { "$regex": q, "$options": "i" }
+        };
+        let cursor = self
+            .collection
+            .find(filter)
+            .with_options(opts)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor
+            .try_collect()
+            .await
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 }

@@ -1,88 +1,156 @@
-use rocket::{
-    http::Status,
-    request::{FromRequest, Outcome, Request},
-};
+use rocket::http::Status;
+use rocket::request::{FromRequest, Outcome, Request};
 
-use crate::{auth::Claims, state::AppState};
+use crate::auth::verify_token;
+use crate::state::AppState;
 
-/// Request guard that extracts and verifies the JWT from the Authorization header.
-pub struct AuthUser(pub Claims);
+// ── AuthUser ────────────────────────────────────────────────────────────────
+
+/// Extracts the authenticated user_id from `Authorization: Bearer <token>`.
+pub struct AuthUser {
+    pub user_id: String,
+}
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AuthUser {
-    type Error = ();
+    type Error = &'static str;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let state = req.rocket().state::<AppState>().unwrap();
+        let state = match req.rocket().state::<AppState>() {
+            Some(s) => s,
+            None => return Outcome::Error((Status::InternalServerError, "Missing AppState")),
+        };
 
-        let token = req
-            .headers()
-            .get_one("Authorization")
-            .and_then(|v| v.strip_prefix("Bearer "));
+        let header = match req.headers().get_one("Authorization") {
+            Some(h) => h,
+            None => return Outcome::Error((Status::Unauthorized, "Missing Authorization header")),
+        };
 
-        match token {
-            None => Outcome::Error((Status::Unauthorized, ())),
-            Some(t) => match crate::auth::verify_token(t, &state.jwt_secret) {
-                Ok(claims) => Outcome::Success(AuthUser(claims)),
-                Err(_) => Outcome::Error((Status::Unauthorized, ())),
-            },
+        let token = header.strip_prefix("Bearer ").unwrap_or(header);
+
+        match verify_token(token, &state.jwt_secret) {
+            Ok(claims) => Outcome::Success(AuthUser {
+                user_id: claims.sub,
+            }),
+            Err(_) => Outcome::Error((Status::Unauthorized, "Invalid or expired token")),
         }
     }
 }
 
-/// Optional authentication — succeeds with `Some(Claims)` when a valid token is
-/// present, or `None` otherwise. Never fails the request.
-pub struct OptionalAuth(pub Option<Claims>);
+// ── OptionalAuth ────────────────────────────────────────────────────────────
+
+/// Same as AuthUser, but returns `None` instead of erroring if no token.
+pub struct OptionalAuth(pub Option<String>);
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for OptionalAuth {
-    type Error = ();
+    type Error = std::convert::Infallible;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let state = req.rocket().state::<AppState>().unwrap();
-        let token = req
-            .headers()
-            .get_one("Authorization")
-            .and_then(|v| v.strip_prefix("Bearer "));
-        let claims = token.and_then(|t| crate::auth::verify_token(t, &state.jwt_secret).ok());
-        Outcome::Success(OptionalAuth(claims))
-    }
-}
+        let state = match req.rocket().state::<AppState>() {
+            Some(s) => s,
+            None => return Outcome::Success(OptionalAuth(None)),
+        };
 
-/// Request guard that requires the user to be an admin OR a competition publisher.
-pub struct PublisherUser(pub Claims);
+        let header = match req.headers().get_one("Authorization") {
+            Some(h) => h,
+            None => return Outcome::Success(OptionalAuth(None)),
+        };
 
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for PublisherUser {
-    type Error = ();
+        let token = header.strip_prefix("Bearer ").unwrap_or(header);
 
-    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        match AuthUser::from_request(req).await {
-            Outcome::Success(AuthUser(claims)) if claims.is_publisher || claims.is_admin => {
-                Outcome::Success(PublisherUser(claims))
-            }
-            Outcome::Success(_) => Outcome::Error((Status::Forbidden, ())),
-            Outcome::Error(e) => Outcome::Error(e),
-            Outcome::Forward(f) => Outcome::Forward(f),
+        match verify_token(token, &state.jwt_secret) {
+            Ok(claims) => Outcome::Success(OptionalAuth(Some(claims.sub))),
+            Err(_) => Outcome::Success(OptionalAuth(None)),
         }
     }
 }
 
-/// Request guard that additionally requires the user to be an admin.
-pub struct AdminUser(#[allow(dead_code)] pub Claims);
+// ── AdminUser ───────────────────────────────────────────────────────────────
+
+/// AuthUser + checks `is_admin` on the user document.
+pub struct AdminUser {
+    pub user_id: String,
+}
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AdminUser {
-    type Error = ();
+    type Error = &'static str;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        match AuthUser::from_request(req).await {
-            Outcome::Success(AuthUser(claims)) if claims.is_admin => {
-                Outcome::Success(AdminUser(claims))
-            }
-            Outcome::Success(_) => Outcome::Error((Status::Forbidden, ())),
-            Outcome::Error(e) => Outcome::Error(e),
-            Outcome::Forward(f) => Outcome::Forward(f),
+        let state = match req.rocket().state::<AppState>() {
+            Some(s) => s,
+            None => return Outcome::Error((Status::InternalServerError, "Missing AppState")),
+        };
+
+        let header = match req.headers().get_one("Authorization") {
+            Some(h) => h,
+            None => return Outcome::Error((Status::Unauthorized, "Missing Authorization header")),
+        };
+
+        let token = header.strip_prefix("Bearer ").unwrap_or(header);
+
+        let claims = match verify_token(token, &state.jwt_secret) {
+            Ok(c) => c,
+            Err(_) => return Outcome::Error((Status::Unauthorized, "Invalid or expired token")),
+        };
+
+        // Check admin flag in database
+        let user = match state.db.user_repo().find_by_id(&claims.sub).await {
+            Ok(Some(u)) => u,
+            _ => return Outcome::Error((Status::Unauthorized, "User not found")),
+        };
+
+        if !user.is_admin {
+            return Outcome::Error((Status::Forbidden, "Admin access required"));
         }
+
+        Outcome::Success(AdminUser {
+            user_id: claims.sub,
+        })
+    }
+}
+
+// ── PublisherUser ───────────────────────────────────────────────────────────
+
+/// AuthUser + checks `is_publisher` OR `is_admin` on the user document.
+pub struct PublisherUser {
+    pub user_id: String,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for PublisherUser {
+    type Error = &'static str;
+
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let state = match req.rocket().state::<AppState>() {
+            Some(s) => s,
+            None => return Outcome::Error((Status::InternalServerError, "Missing AppState")),
+        };
+
+        let header = match req.headers().get_one("Authorization") {
+            Some(h) => h,
+            None => return Outcome::Error((Status::Unauthorized, "Missing Authorization header")),
+        };
+
+        let token = header.strip_prefix("Bearer ").unwrap_or(header);
+
+        let claims = match verify_token(token, &state.jwt_secret) {
+            Ok(c) => c,
+            Err(_) => return Outcome::Error((Status::Unauthorized, "Invalid or expired token")),
+        };
+
+        let user = match state.db.user_repo().find_by_id(&claims.sub).await {
+            Ok(Some(u)) => u,
+            _ => return Outcome::Error((Status::Unauthorized, "User not found")),
+        };
+
+        if !user.is_publisher && !user.is_admin {
+            return Outcome::Error((Status::Forbidden, "Publisher access required"));
+        }
+
+        Outcome::Success(PublisherUser {
+            user_id: claims.sub,
+        })
     }
 }

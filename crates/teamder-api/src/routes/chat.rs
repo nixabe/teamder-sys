@@ -1,164 +1,229 @@
-use std::collections::HashMap;
-use rocket::{State, serde::json::Json};
-use rocket::futures::{SinkExt, StreamExt};
-use rocket_ws as ws;
-use teamder_core::models::message::{ConversationSummary, Message, MessageResponse, WsIncoming};
+use chrono::Utc;
+use rocket::serde::json::Json;
+use rocket::State;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::{
-    auth::verify_token,
-    error::{ApiError, ApiResult},
-    guards::AuthUser,
-    state::AppState,
-};
+use crate::auth::verify_token;
+use crate::error::ApiError;
+use crate::guards::AuthUser;
+use crate::state::AppState;
+use teamder_core::error::TeamderError;
+use teamder_core::models::message::Message;
 
-fn build_msg_response(msg: &Message, from_user_name: &str) -> MessageResponse {
-    MessageResponse {
-        id: msg.id.clone(),
-        from_user_id: msg.from_user_id.clone(),
-        from_user_name: from_user_name.to_string(),
-        to_user_id: msg.to_user_id.clone(),
-        content: msg.content.clone(),
-        created_at: msg.created_at,
-        read: msg.read,
-    }
-}
+// ── DTOs ────────────────────────────────────────────────────────────────────
 
-#[get("/conversations")]
-pub async fn list_conversations(
-    user: AuthUser,
-    state: &State<AppState>,
-) -> ApiResult<Vec<ConversationSummary>> {
-    let mut convs = state.messages.list_conversations(&user.0.sub).await?;
-
-    if !convs.is_empty() {
-        let partner_ids: Vec<&str> = convs.iter().map(|c| c.partner_id.as_str()).collect();
-        let users = state.users.find_many_by_ids(&partner_ids).await?;
-        let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
-        for conv in &mut convs {
-            conv.partner_name = names.get(conv.partner_id.as_str()).copied().unwrap_or("").to_string();
-        }
-    }
-
-    Ok(Json(convs))
-}
-
-#[get("/messages/<partner_id>?<limit>&<skip>")]
-pub async fn message_history(
-    user: AuthUser,
-    partner_id: String,
-    limit: Option<i64>,
-    skip: Option<u64>,
-    state: &State<AppState>,
-) -> ApiResult<Vec<MessageResponse>> {
-    let msgs = state
-        .messages
-        .list_conversation(
-            &user.0.sub,
-            &partner_id,
-            limit.unwrap_or(50),
-            skip.unwrap_or(0),
-        )
-        .await?;
-    let _ = state.messages.mark_read(&partner_id, &user.0.sub).await;
-
-    // Batch-fetch the two participants' names
-    let user_ids: Vec<&str> = [user.0.sub.as_str(), partner_id.as_str()].into();
-    let users = state.users.find_many_by_ids(&user_ids).await?;
-    let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
-
-    let responses = msgs.iter()
-        .map(|m| {
-            let name = names.get(m.from_user_id.as_str()).copied().unwrap_or("");
-            build_msg_response(m, name)
-        })
-        .collect();
-
-    Ok(Json(responses))
-}
-
-#[get("/ws?<token>")]
-pub async fn chat_ws(
-    ws: ws::WebSocket,
-    token: String,
-    state: &State<AppState>,
-) -> Result<ws::Channel<'static>, ApiError> {
-    let claims = verify_token(&token, &state.jwt_secret)?;
-    let user_id = claims.sub.clone();
-
-    // Look up the connecting user's name once at connect time
-    let user_name = state.users.find_by_id(&user_id).await
-        .ok().flatten()
-        .map(|u| u.name)
-        .unwrap_or_default();
-
-    let msg_repo = state.messages.clone();
-    let chat = state.chat.clone();
-
-    let mut rx = chat.subscribe(&user_id).await;
-
-    Ok(ws.channel(move |mut stream| {
-        Box::pin(async move {
-            loop {
-                tokio::select! {
-                    frame = stream.next() => {
-                        let Some(Ok(ws::Message::Text(text))) = frame else { break };
-                        let Ok(incoming) = serde_json::from_str::<WsIncoming>(&text.to_string()) else { continue };
-                        if incoming.content.trim().is_empty() { continue; }
-
-                        let m = Message::new(&user_id, &incoming.to_user_id, &incoming.content);
-                        let resp = build_msg_response(&m, &user_name);
-                        let _ = msg_repo.create(&m).await;
-
-                        if let Ok(json) = serde_json::to_string(&resp) {
-                            chat.send_to(&incoming.to_user_id, json.clone()).await;
-                            chat.send_to(&user_id, json).await;
-                        }
-                    }
-                    result = rx.recv() => {
-                        match result {
-                            Ok(text) => { let _ = stream.send(ws::Message::Text(text.into())).await; }
-                            _ => break,
-                        }
-                    }
-                }
-            }
-            Ok(())
-        })
-    }))
-}
-
-#[derive(serde::Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct SendMessageBody {
     pub to_user_id: String,
     pub content: String,
 }
 
-#[post("/messages", data = "<body>")]
-pub async fn send_message(
-    user: AuthUser,
-    body: Json<SendMessageBody>,
-    state: &State<AppState>,
-) -> ApiResult<MessageResponse> {
-    if body.content.trim().is_empty() {
-        return Err(teamder_core::error::TeamderError::Validation("Content cannot be empty".into()).into());
-    }
-    let user_name = state.users.find_by_id(&user.0.sub).await
-        .ok().flatten()
-        .map(|u| u.name)
-        .unwrap_or_default();
-
-    let m = Message::new(&user.0.sub, &body.to_user_id, &body.content);
-    let resp = build_msg_response(&m, &user_name);
-    let _ = state.messages.create(&m).await;
-
-    if let Ok(json) = serde_json::to_string(&resp) {
-        state.chat.send_to(&body.to_user_id, json.clone()).await;
-        state.chat.send_to(&user.0.sub, json).await;
-    }
-
-    Ok(Json(resp))
+#[derive(Debug, Serialize)]
+pub struct ConversationWithPartner {
+    pub partner_id: String,
+    pub partner_name: String,
+    pub partner_avatar: Option<String>,
+    pub partner_initials: String,
+    pub partner_gradient: String,
+    pub last_message: String,
+    pub unread_count: i64,
+    pub updated_at: chrono::DateTime<Utc>,
 }
 
-pub fn routes() -> Vec<rocket::Route> {
-    routes![list_conversations, message_history, chat_ws, send_message]
+// ── Routes ──────────────────────────────────────────────────────────────────
+
+#[rocket::get("/chat/conversations")]
+pub async fn list_conversations(
+    state: &State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<Vec<ConversationWithPartner>>, ApiError> {
+    let summaries = state
+        .db
+        .message_repo()
+        .conversations(&auth.user_id)
+        .await?;
+
+    let mut convos = Vec::new();
+    for s in summaries {
+        let partner = state.db.user_repo().find_by_id(&s.partner_id).await?;
+        let (name, avatar, initials, gradient) = match partner {
+            Some(u) => (
+                u.name,
+                u.avatar_url,
+                u.initials,
+                u.gradient,
+            ),
+            None => (
+                "Unknown".to_string(),
+                None,
+                "??".to_string(),
+                String::new(),
+            ),
+        };
+
+        convos.push(ConversationWithPartner {
+            partner_id: s.partner_id,
+            partner_name: name,
+            partner_avatar: avatar,
+            partner_initials: initials,
+            partner_gradient: gradient,
+            last_message: s.last_message,
+            unread_count: s.unread_count,
+            updated_at: s.updated_at,
+        });
+    }
+
+    Ok(Json(convos))
+}
+
+#[rocket::get("/chat/messages/<partner_id>")]
+pub async fn get_messages(
+    state: &State<AppState>,
+    auth: AuthUser,
+    partner_id: &str,
+) -> Result<Json<Vec<Message>>, ApiError> {
+    let messages = state
+        .db
+        .message_repo()
+        .messages_with(&auth.user_id, partner_id)
+        .await?;
+
+    // Mark messages from partner as read
+    let _ = state
+        .db
+        .message_repo()
+        .mark_read(partner_id, &auth.user_id)
+        .await;
+
+    Ok(Json(messages))
+}
+
+#[rocket::post("/chat/messages", data = "<body>")]
+pub async fn send_message(
+    state: &State<AppState>,
+    auth: AuthUser,
+    body: Json<SendMessageBody>,
+) -> Result<Json<Message>, ApiError> {
+    let req = body.into_inner();
+    let now = Utc::now();
+
+    let msg = Message {
+        id: Uuid::new_v4().to_string(),
+        from_user_id: auth.user_id.clone(),
+        to_user_id: req.to_user_id.clone(),
+        content: req.content.clone(),
+        read: false,
+        created_at: now,
+    };
+
+    state.db.message_repo().create(&msg).await?;
+
+    // Broadcast to recipient's WebSocket channel
+    let tx = state
+        .chat_state
+        .get_or_create_channel(&req.to_user_id);
+    let payload = serde_json::to_string(&msg).unwrap_or_default();
+    let _ = tx.send(payload);
+
+    Ok(Json(msg))
+}
+
+// ── WebSocket handler ───────────────────────────────────────────────────────
+
+#[rocket::get("/chat/ws?<token>")]
+pub fn websocket_handler(
+    state: &State<AppState>,
+    ws: rocket_ws::WebSocket,
+    token: String,
+) -> Result<rocket_ws::Channel<'static>, ApiError> {
+    let claims = verify_token(&token, &state.jwt_secret)
+        .map_err(|_| TeamderError::Unauthorized("Invalid token".into()))?;
+
+    let user_id = claims.sub;
+    let chat_state = state.chat_state.channels.clone();
+    let db = state.db.clone();
+
+    Ok(ws.channel(move |mut stream| {
+        Box::pin(async move {
+            use rocket_ws::Message as WsMsg;
+            use tokio::sync::broadcast;
+
+            // Subscribe to this user's channel
+            let tx = {
+                let mut map = chat_state.lock().unwrap();
+                map.entry(user_id.clone())
+                    .or_insert_with(|| {
+                        let (tx, _) = broadcast::channel(64);
+                        tx
+                    })
+                    .clone()
+            };
+            let mut rx = tx.subscribe();
+
+            loop {
+                tokio::select! {
+                    // Messages from WebSocket client
+                    msg = futures::StreamExt::next(&mut stream) => {
+                        match msg {
+                            Some(Ok(WsMsg::Text(text))) => {
+                                // Parse incoming message
+                                #[derive(serde::Deserialize)]
+                                struct WsIncoming {
+                                    to_user_id: String,
+                                    content: String,
+                                }
+
+                                if let Ok(incoming) = serde_json::from_str::<WsIncoming>(&text) {
+                                    let now = chrono::Utc::now();
+                                    let msg = Message {
+                                        id: uuid::Uuid::new_v4().to_string(),
+                                        from_user_id: user_id.clone(),
+                                        to_user_id: incoming.to_user_id.clone(),
+                                        content: incoming.content,
+                                        read: false,
+                                        created_at: now,
+                                    };
+
+                                    let _ = db.message_repo().create(&msg).await;
+
+                                    // Broadcast to recipient
+                                    let recipient_tx = {
+                                        let mut map = chat_state.lock().unwrap();
+                                        map.entry(incoming.to_user_id)
+                                            .or_insert_with(|| {
+                                                let (tx, _) = broadcast::channel(64);
+                                                tx
+                                            })
+                                            .clone()
+                                    };
+                                    let payload = serde_json::to_string(&msg).unwrap_or_default();
+                                    let _ = recipient_tx.send(payload);
+                                }
+                            }
+                            Some(Ok(WsMsg::Close(_))) | None => break,
+                            _ => {}
+                        }
+                    }
+                    // Messages from broadcast channel (incoming from other users)
+                    result = rx.recv() => {
+                        match result {
+                            Ok(payload) => {
+                                if futures::SinkExt::send(
+                                    &mut stream,
+                                    WsMsg::Text(payload.into()),
+                                ).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(_) => break,
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        })
+    }))
 }

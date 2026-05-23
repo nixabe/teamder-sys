@@ -1,375 +1,202 @@
-use anyhow::Result;
-use mongodb::bson::doc;
-use teamder_core::models::{
-    competition::{Competition, CompetitionStatus},
-    project::{CollabMode, Project, ProjectRole, ProjectStatus},
-    skill_catalog::{StoredSkillCategory, StoredSkillTag},
-    study_group::StudyGroup,
-    user::{AvailabilityStatus, PortfolioItem, Review, Skill, User, WorkMode},
-};
+use chrono::Utc;
+use teamder_core::models::skill_catalog::{StoredSkillCategory, StoredSkillTag};
+use uuid::Uuid;
 
-use crate::DbClient;
+use crate::client::DbClient;
 
-/// Insert seed data into every collection if the `users` collection is empty.
-/// Safe to call on every startup — does nothing when data already exists.
-pub async fn seed_if_empty(db: &DbClient) -> Result<()> {
-    let count = db
-        .db
-        .collection::<User>("users")
-        .count_documents(doc! {})
-        .await?;
+/// Skill catalog data: (category_key, label_en, label_zh, tags)
+/// Each tag is (name_en, name_zh).
+const SKILL_CATALOG: &[(&str, &str, &str, &[(&str, &str)])] = &[
+    (
+        "frontend",
+        "Frontend",
+        "前端開發",
+        &[
+            ("React", "React"),
+            ("Vue.js", "Vue.js"),
+            ("Angular", "Angular"),
+            ("Next.js", "Next.js"),
+            ("TypeScript", "TypeScript"),
+            ("HTML/CSS", "HTML/CSS"),
+            ("Tailwind CSS", "Tailwind CSS"),
+            ("Svelte", "Svelte"),
+        ],
+    ),
+    (
+        "backend",
+        "Backend",
+        "後端開發",
+        &[
+            ("Node.js", "Node.js"),
+            ("Python", "Python"),
+            ("Rust", "Rust"),
+            ("Go", "Go"),
+            ("Java", "Java"),
+            ("C#/.NET", "C#/.NET"),
+            ("PHP", "PHP"),
+            ("Ruby", "Ruby"),
+        ],
+    ),
+    (
+        "mobile",
+        "Mobile",
+        "行動開發",
+        &[
+            ("React Native", "React Native"),
+            ("Flutter", "Flutter"),
+            ("Swift/iOS", "Swift/iOS"),
+            ("Kotlin/Android", "Kotlin/Android"),
+        ],
+    ),
+    (
+        "database",
+        "Database",
+        "資料庫",
+        &[
+            ("MongoDB", "MongoDB"),
+            ("PostgreSQL", "PostgreSQL"),
+            ("MySQL", "MySQL"),
+            ("Redis", "Redis"),
+            ("Firebase", "Firebase"),
+        ],
+    ),
+    (
+        "devops",
+        "DevOps",
+        "DevOps",
+        &[
+            ("Docker", "Docker"),
+            ("Kubernetes", "Kubernetes"),
+            ("AWS", "AWS"),
+            ("GCP", "GCP"),
+            ("CI/CD", "CI/CD"),
+            ("Linux", "Linux"),
+        ],
+    ),
+    (
+        "design",
+        "Design",
+        "設計",
+        &[
+            ("UI/UX Design", "UI/UX 設計"),
+            ("Figma", "Figma"),
+            ("Adobe XD", "Adobe XD"),
+            ("Graphic Design", "平面設計"),
+            ("Illustration", "插畫"),
+        ],
+    ),
+    (
+        "data",
+        "Data Science",
+        "資料科學",
+        &[
+            ("Machine Learning", "機器學習"),
+            ("Data Analysis", "資料分析"),
+            ("Deep Learning", "深度學習"),
+            ("NLP", "自然語言處理"),
+            ("Computer Vision", "電腦視覺"),
+            ("Statistics", "統計學"),
+        ],
+    ),
+    (
+        "blockchain",
+        "Blockchain",
+        "區塊鏈",
+        &[
+            ("Solidity", "Solidity"),
+            ("Web3.js", "Web3.js"),
+            ("Smart Contracts", "智能合約"),
+        ],
+    ),
+    (
+        "pm",
+        "Project Management",
+        "專案管理",
+        &[
+            ("Agile/Scrum", "敏捷/Scrum"),
+            ("Product Management", "產品管理"),
+            ("JIRA", "JIRA"),
+        ],
+    ),
+    (
+        "marketing",
+        "Marketing",
+        "行銷",
+        &[
+            ("Digital Marketing", "數位行銷"),
+            ("SEO", "SEO"),
+            ("Content Marketing", "內容行銷"),
+            ("Social Media", "社群媒體"),
+        ],
+    ),
+    (
+        "business",
+        "Business",
+        "商業",
+        &[
+            ("Business Analysis", "商業分析"),
+            ("Financial Analysis", "財務分析"),
+            ("Entrepreneurship", "創業"),
+        ],
+    ),
+    (
+        "other",
+        "Other",
+        "其他",
+        &[
+            ("Technical Writing", "技術寫作"),
+            ("Video Editing", "影片剪輯"),
+            ("3D Modeling", "3D 建模"),
+            ("Game Development", "遊戲開發"),
+        ],
+    ),
+];
 
-    if count > 0 {
-        tracing::info!("Database already has data — skipping seed");
+/// Seed the database with initial data if the relevant collections are empty.
+///
+/// This is called once at startup. In development it can pre-populate skill
+/// catalogues, demo users, etc. In production it is a no-op when data already
+/// exists.
+pub async fn seed_if_empty(db: &DbClient) -> anyhow::Result<()> {
+    let repo = db.skill_catalog_repo();
+
+    let cat_count = repo.count_categories().await.unwrap_or(0);
+    if cat_count > 0 {
+        tracing::debug!("Skill catalog already seeded ({cat_count} categories), skipping");
         return Ok(());
     }
 
-    tracing::info!("Empty database detected — inserting seed data");
+    tracing::info!("Seeding skill catalog...");
 
-    seed_users(db).await?;
-    seed_projects(db).await?;
-    seed_competitions(db).await?;
-    seed_study_groups(db).await?;
-    seed_skill_catalog(db).await?;
-
-    tracing::info!("Seed complete");
-    Ok(())
-}
-
-/// Seed the skill catalog from the hardcoded default if the
-/// `skill_categories` collection is empty. Safe on every boot.
-pub async fn seed_skill_catalog_if_empty(db: &DbClient) -> Result<()> {
-    let count = db
-        .db
-        .collection::<StoredSkillCategory>("skill_categories")
-        .count_documents(doc! {})
-        .await?;
-    if count > 0 {
-        return Ok(());
-    }
-    seed_skill_catalog(db).await
-}
-
-async fn seed_skill_catalog(db: &DbClient) -> Result<()> {
-    use teamder_core::skills::catalog as default_catalog;
-    let cats_col = db.db.collection::<StoredSkillCategory>("skill_categories");
-    let tags_col = db.db.collection::<StoredSkillTag>("skill_tags");
-
-    for (cat_idx, cat) in default_catalog().into_iter().enumerate() {
-        let stored_cat = StoredSkillCategory::new(
-            cat.key.to_string(),
-            cat.label.to_string(),
-            cat.label_zh.to_string(),
-            cat_idx as i32,
-        );
-        cats_col.insert_one(&stored_cat).await?;
-
-        for (tag_idx, tag) in cat.skills.into_iter().enumerate() {
-            let stored_tag = StoredSkillTag::new(
-                tag.name.to_string(),
-                tag.name_zh.to_string(),
-                cat.key.to_string(),
-                tag_idx as i32,
-            );
-            tags_col.insert_one(&stored_tag).await?;
-        }
-    }
-    tracing::info!("Seeded skill catalog from default");
-    Ok(())
-}
-
-// ── Users ──────────────────────────────────────────────────────────────────
-
-async fn seed_users(db: &DbClient) -> Result<()> {
-    use chrono::Utc;
-
-    let hash = |pw: &str| bcrypt::hash(pw, bcrypt::DEFAULT_COST).unwrap();
     let now = Utc::now();
 
-    let mut admin = User::new(
-        "admin@teamder.app",
-        hash("admin1234"),
-        "Andy Chen",
-        "Full-Stack Developer",
-        "Computer Science",
-    );
-    admin.is_admin = true;
-    admin.university = "Fu Jen Catholic University".into();
-    admin.year = "Year 3".into();
-    admin.location = Some("New Taipei City, Taiwan".into());
-    admin.bio = vec![
-        "Building things that matter, one commit at a time.".into(),
-        "Passionate about open-source and developer tooling.".into(),
-    ];
-    admin.skills = vec![
-        Skill { name: "Rust".into(), level: 85 },
-        Skill { name: "TypeScript".into(), level: 90 },
-        Skill { name: "React".into(), level: 88 },
-        Skill { name: "MongoDB".into(), level: 75 },
-    ];
-    admin.skill_tags = vec!["Rust".into(), "TypeScript".into(), "React".into(), "MongoDB".into()];
-    admin.gradient = "linear-gradient(135deg, #DD6E42, #E89070)".into();
-    admin.work_mode = WorkMode::Hybrid;
-    admin.availability = AvailabilityStatus::OpenForCollab;
-    admin.hours_per_week = "15-20 hrs/week".into();
-    admin.languages = vec!["Chinese".into(), "English".into()];
-    admin.match_score = 95;
-    admin.rating = 4.9;
-    admin.projects_done = 12;
-    admin.collaborations = 8;
-    admin.portfolio = vec![
-        PortfolioItem {
-            title: "Teamder".into(),
-            kind: "Web App".into(),
-            description: Some("A team-matching platform for students.".into()),
-            url: Some("https://github.com/WatchAndyTW/teamder".into()),
-        },
-    ];
-    admin.created_at = now;
-    admin.updated_at = now;
+    for (order, &(key, label, label_zh, tags)) in SKILL_CATALOG.iter().enumerate() {
+        let category = StoredSkillCategory {
+            id: key.to_string(),
+            label: label.to_string(),
+            label_zh: label_zh.to_string(),
+            order: order as i32,
+            created_at: now,
+            updated_at: now,
+        };
+        repo.create_category(&category).await?;
 
-    let mut alice = User::new(
-        "alice@example.com",
-        hash("password123"),
-        "Alice Wang",
-        "UI/UX Designer",
-        "Digital Media Design",
-    );
-    alice.university = "Fu Jen Catholic University".into();
-    alice.year = "Year 2".into();
-    alice.location = Some("Taipei, Taiwan".into());
-    alice.bio = vec![
-        "Design is not just what it looks like — design is how it works.".into(),
-    ];
-    alice.skills = vec![
-        Skill { name: "Figma".into(), level: 92 },
-        Skill { name: "CSS".into(), level: 80 },
-        Skill { name: "User Research".into(), level: 85 },
-    ];
-    alice.skill_tags = vec!["Figma".into(), "CSS".into(), "User Research".into()];
-    alice.gradient = "linear-gradient(135deg, #4F6D7A, #6B8D9E)".into();
-    alice.work_mode = WorkMode::Remote;
-    alice.availability = AvailabilityStatus::OpenForCollab;
-    alice.hours_per_week = "10-15 hrs/week".into();
-    alice.match_score = 88;
-    alice.rating = 4.7;
-    alice.projects_done = 6;
-    alice.collaborations = 4;
-    alice.reviews = vec![Review {
-        reviewer_id: admin.id.clone(),
-        reviewer_name: admin.name.clone(),
-        project_name: "Campus App Redesign".into(),
-        stars: 5,
-        body: "Alice's designs were clean, intuitive, and delivered on time. Highly recommend!".into(),
-        created_at: now,
-    }];
+        for (tag_order, &(name, name_zh)) in tags.iter().enumerate() {
+            let tag = StoredSkillTag {
+                id: Uuid::new_v4().to_string(),
+                name: name.to_string(),
+                name_zh: name_zh.to_string(),
+                category_key: key.to_string(),
+                order: tag_order as i32,
+                is_active: true,
+                created_at: now,
+                updated_at: now,
+            };
+            repo.create_tag(&tag).await?;
+        }
+    }
 
-    let mut bob = User::new(
-        "bob@example.com",
-        hash("password123"),
-        "Bob Lin",
-        "Backend Engineer",
-        "Information Engineering",
-    );
-    bob.university = "Fu Jen Catholic University".into();
-    bob.year = "Year 4".into();
-    bob.location = Some("Taichung, Taiwan".into());
-    bob.bio = vec![
-        "Go, Python, and strong opinions about database indexes.".into(),
-        "Open to backend & infrastructure collaboration.".into(),
-    ];
-    bob.skills = vec![
-        Skill { name: "Go".into(), level: 88 },
-        Skill { name: "Python".into(), level: 82 },
-        Skill { name: "PostgreSQL".into(), level: 79 },
-        Skill { name: "Docker".into(), level: 85 },
-    ];
-    bob.skill_tags = vec!["Go".into(), "Python".into(), "PostgreSQL".into(), "Docker".into()];
-    bob.gradient = "linear-gradient(135deg, #C0D6DF, #7FA8BB)".into();
-    bob.work_mode = WorkMode::InPerson;
-    bob.availability = AvailabilityStatus::Busy;
-    bob.hours_per_week = "5-10 hrs/week".into();
-    bob.match_score = 76;
-    bob.rating = 4.5;
-    bob.projects_done = 9;
-    bob.collaborations = 5;
+    tracing::info!("Skill catalog seeded ({} categories)", SKILL_CATALOG.len());
 
-    let col: mongodb::Collection<User> = db.db.collection("users");
-    col.insert_many(vec![admin, alice, bob]).await?;
-    tracing::info!("  ✓ Inserted 3 seed users");
-    Ok(())
-}
-
-// ── Projects ───────────────────────────────────────────────────────────────
-
-async fn seed_projects(db: &DbClient) -> Result<()> {
-    // Grab the admin user to use as lead
-    let user_col: mongodb::Collection<User> = db.db.collection("users");
-    let admin = user_col
-        .find_one(doc! { "email": "admin@teamder.app" })
-        .await?
-        .expect("seed_users must run before seed_projects");
-
-    let mut p1 = Project::new(
-        "Campus Event Finder",
-        &admin.id,
-        "A mobile-first web app that aggregates campus events across all departments and lets students RSVP, bookmark, and get reminders.",
-    );
-    p1.icon = "CE".into();
-    p1.icon_bg = "linear-gradient(135deg, #DD6E42, #B85530)".into();
-    p1.status = ProjectStatus::Recruiting;
-    p1.goals = Some("Launch MVP before the semester break; onboard 200 active users.".into());
-    p1.roles = vec![
-        ProjectRole { name: "Mobile Developer".into(), count_needed: 2, filled: 0 },
-        ProjectRole { name: "UI/UX Designer".into(), count_needed: 1, filled: 0 },
-    ];
-    p1.skills = vec!["React Native".into(), "Node.js".into(), "Figma".into()];
-    p1.deadline = Some("2026-06-30".into());
-    p1.collab = CollabMode::Hybrid;
-    p1.duration = Some("3 months".into());
-    p1.category = Some("Mobile App".into());
-
-    let mut p2 = Project::new(
-        "Open-Source Course Scheduler",
-        &admin.id,
-        "A constraint-solver-powered tool that auto-generates conflict-free course timetables from student preference forms.",
-    );
-    p2.icon = "CS".into();
-    p2.icon_bg = "linear-gradient(135deg, #4F6D7A, #2C3E45)".into();
-    p2.status = ProjectStatus::Active;
-    p2.goals = Some("Support at least 500 concurrent users; publish to npm.".into());
-    p2.roles = vec![
-        ProjectRole { name: "Algorithm Engineer".into(), count_needed: 1, filled: 1 },
-        ProjectRole { name: "Frontend Developer".into(), count_needed: 1, filled: 0 },
-    ];
-    p2.skills = vec!["TypeScript".into(), "React".into(), "Algorithms".into()];
-    p2.deadline = Some("2026-08-15".into());
-    p2.collab = CollabMode::Remote;
-    p2.duration = Some("4 months".into());
-    p2.category = Some("Developer Tool".into());
-
-    let mut p3 = Project::new(
-        "AI Study Buddy",
-        &admin.id,
-        "A RAG-based chatbot that ingests your lecture notes and answers questions, generates quizzes, and summarises key concepts.",
-    );
-    p3.icon = "AI".into();
-    p3.icon_bg = "linear-gradient(135deg, #E8DAB2, #C9A96E)".into();
-    p3.status = ProjectStatus::Recruiting;
-    p3.roles = vec![
-        ProjectRole { name: "ML Engineer".into(), count_needed: 1, filled: 0 },
-        ProjectRole { name: "Backend Developer".into(), count_needed: 1, filled: 0 },
-        ProjectRole { name: "UI/UX Designer".into(), count_needed: 1, filled: 0 },
-    ];
-    p3.skills = vec!["Python".into(), "LangChain".into(), "FastAPI".into(), "React".into()];
-    p3.deadline = Some("2026-09-01".into());
-    p3.collab = CollabMode::Remote;
-    p3.duration = Some("5 months".into());
-    p3.category = Some("AI / ML".into());
-
-    let col: mongodb::Collection<Project> = db.db.collection("projects");
-    col.insert_many(vec![p1, p2, p3]).await?;
-    tracing::info!("  ✓ Inserted 3 seed projects");
-    Ok(())
-}
-
-// ── Competitions ───────────────────────────────────────────────────────────
-
-async fn seed_competitions(db: &DbClient) -> Result<()> {
-    let mut c1 = Competition::new(
-        "FJCU Hackathon 2026",
-        "Fu Jen Catholic University",
-        "48-hour hackathon open to all students. Build anything that solves a real campus problem. Prizes for top 3 teams.",
-    );
-    c1.icon = "FH".into();
-    c1.icon_bg = "linear-gradient(135deg, #DD6E42, #B85530)".into();
-    c1.status = CompetitionStatus::Open;
-    c1.prize = "NT$60,000 total prize pool".into();
-    c1.team_size_min = 2;
-    c1.team_size_max = 4;
-    c1.deadline = Some("2026-05-10".into());
-    c1.duration = "48 hours".into();
-    c1.tags = vec!["Hackathon".into(), "Open Theme".into(), "Campus".into()];
-    c1.is_featured = true;
-
-    let mut c2 = Competition::new(
-        "AI Innovation Challenge",
-        "Taiwan AI Academy",
-        "Design an AI-powered solution for social good. Submissions judged on impact, novelty, and technical execution.",
-    );
-    c2.icon = "AI".into();
-    c2.icon_bg = "linear-gradient(135deg, #4F6D7A, #2C3E45)".into();
-    c2.status = CompetitionStatus::ClosingSoon;
-    c2.prize = "NT$120,000 + mentorship".into();
-    c2.team_size_min = 1;
-    c2.team_size_max = 3;
-    c2.deadline = Some("2026-04-25".into());
-    c2.duration = "4 weeks".into();
-    c2.tags = vec!["AI".into(), "Social Good".into(), "Research".into()];
-    c2.is_featured = true;
-
-    let mut c3 = Competition::new(
-        "Web Dev Cup 2026",
-        "Google Developer Student Clubs",
-        "Build a full-stack web application in 72 hours. Any stack, any idea. Judged on UX, performance, and code quality.",
-    );
-    c3.icon = "WD".into();
-    c3.icon_bg = "linear-gradient(135deg, #C0D6DF, #7FA8BB)".into();
-    c3.status = CompetitionStatus::Upcoming;
-    c3.prize = "Swag, cloud credits & certificates".into();
-    c3.team_size_min = 2;
-    c3.team_size_max = 5;
-    c3.deadline = Some("2026-07-01".into());
-    c3.duration = "72 hours".into();
-    c3.tags = vec!["Web".into(), "Full-Stack".into(), "GDSC".into()];
-
-    let col: mongodb::Collection<Competition> = db.db.collection("competitions");
-    col.insert_many(vec![c1, c2, c3]).await?;
-    tracing::info!("  ✓ Inserted 3 seed competitions");
-    Ok(())
-}
-
-// ── Study Groups ───────────────────────────────────────────────────────────
-
-async fn seed_study_groups(db: &DbClient) -> Result<()> {
-    let user_col: mongodb::Collection<User> = db.db.collection("users");
-    let admin = user_col
-        .find_one(doc! { "email": "admin@teamder.app" })
-        .await?
-        .expect("seed_users must run before seed_study_groups");
-
-    let mut g1 = StudyGroup::new(
-        "Rust Systems Programming",
-        "Work through 'The Rust Programming Language' book together, implement weekly exercises, and pair-review each other's code.",
-        &admin.id,
-    );
-    g1.icon = "RS".into();
-    g1.icon_bg = "linear-gradient(135deg, #DD6E42, #B85530)".into();
-    g1.subject = "Systems Programming".into();
-    g1.tags = vec!["Rust".into(), "Systems".into(), "Backend".into()];
-    g1.max_members = 6;
-    g1.schedule = "Every Saturday 14:00–16:00".into();
-    g1.duration_weeks = 10;
-    g1.current_week = 3;
-    g1.is_open = true;
-
-    let mut g2 = StudyGroup::new(
-        "Algorithms & LeetCode Grind",
-        "Daily LeetCode problems (easy → hard), weekly contest debrief, and mock interview sessions before graduation season.",
-        &admin.id,
-    );
-    g2.icon = "AL".into();
-    g2.icon_bg = "linear-gradient(135deg, #4F6D7A, #6B8593)".into();
-    g2.subject = "Algorithms".into();
-    g2.tags = vec!["Algorithms".into(), "LeetCode".into(), "Interview Prep".into()];
-    g2.max_members = 8;
-    g2.schedule = "Mon / Wed / Fri 21:00–22:00".into();
-    g2.duration_weeks = 12;
-    g2.current_week = 5;
-    g2.is_open = true;
-
-    let col: mongodb::Collection<StudyGroup> = db.db.collection("study_groups");
-    col.insert_many(vec![g1, g2]).await?;
-    tracing::info!("  ✓ Inserted 2 seed study groups");
     Ok(())
 }

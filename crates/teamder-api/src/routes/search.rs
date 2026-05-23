@@ -1,102 +1,104 @@
-use rocket::{Route, State, serde::json::Json};
-use serde_json::{Value, json};
-use teamder_core::{
-    models::{
-        competition::CompetitionResponse,
-        project::ProjectResponse,
-        study_group::StudyGroup,
-        user::UserResponse,
-    },
-    skills::search_en_by_zh,
-};
+use rocket::serde::json::Json;
+use rocket::State;
+use serde::Serialize;
 
-use crate::{error::ApiResult, state::AppState};
+use crate::error::ApiError;
+use crate::state::AppState;
+use teamder_core::error::TeamderError;
+// ── DTOs ────────────────────────────────────────────────────────────────────
 
-/// GET /api/v1/search?q=…
-///
-/// Cross-entity search: returns up to 10 hits each from users, projects,
-/// competitions, and study groups. Supports both English and Traditional
-/// Chinese skill names — a Chinese query is expanded into the matching
-/// English skill names before the underlying repos run their searches.
-#[get("/?<q>")]
-async fn search_all(q: Option<String>, state: &State<AppState>) -> ApiResult<Value> {
-    let query = q.unwrap_or_default();
-    let raw_query = query.trim().to_string();
-    if raw_query.is_empty() {
-        return Ok(Json(json!({ "users": [], "projects": [], "competitions": [], "study_groups": [] })));
-    }
-
-    // Build expanded keyword list. Always includes the raw query; if the
-    // query contains CJK characters or matches Chinese skill labels, also
-    // include the corresponding English skill names so the English-stored
-    // tags are searchable from a Chinese query.
-    let mut keywords: Vec<String> = vec![raw_query.clone()];
-    let zh_hits = search_en_by_zh(&raw_query);
-    for k in zh_hits.iter() {
-        keywords.push((*k).to_string());
-    }
-    keywords.sort();
-    keywords.dedup();
-
-    // Run user/project searches against every keyword and merge.
-    let mut users_raw = Vec::new();
-    let mut projects_raw = Vec::new();
-    for kw in &keywords {
-        users_raw.extend(state.users.search(kw).await?);
-        projects_raw.extend(state.projects.search(kw).await?);
-    }
-    // Dedupe by id.
-    users_raw.sort_by(|a, b| a.id.cmp(&b.id));
-    users_raw.dedup_by(|a, b| a.id == b.id);
-    projects_raw.sort_by(|a, b| a.id.cmp(&b.id));
-    projects_raw.dedup_by(|a, b| a.id == b.id);
-
-    let users: Vec<UserResponse> = users_raw.into_iter().take(10).map(UserResponse::from).collect();
-    let mut projects = Vec::new();
-    for p in projects_raw.into_iter().take(10) {
-        let lead_name = state.users.find_by_id(&p.lead_user_id).await?.map(|u| u.name).unwrap_or_default();
-        projects.push(ProjectResponse::from_project(p, lead_name));
-    }
-
-    // Competitions and study groups: in-memory contains-match against any keyword.
-    let lower_keywords: Vec<String> = keywords.iter().map(|k| k.to_lowercase()).collect();
-    let matches_any = |hay: &str| {
-        let h = hay.to_lowercase();
-        lower_keywords.iter().any(|k| !k.is_empty() && h.contains(k))
-    };
-
-    let comps_raw = state.competitions.list().await?;
-    let competitions: Vec<CompetitionResponse> = comps_raw
-        .into_iter()
-        .filter(|c| {
-            matches_any(&c.name)
-                || matches_any(&c.description)
-                || c.tags.iter().any(|t| matches_any(t))
-        })
-        .take(10)
-        .map(CompetitionResponse::from)
-        .collect();
-
-    let groups_raw: Vec<StudyGroup> = state.study_groups.list(100, 0).await?;
-    let study_groups: Vec<_> = groups_raw
-        .into_iter()
-        .filter(|g| {
-            matches_any(&g.name)
-                || matches_any(&g.subject)
-                || g.tags.iter().any(|t| matches_any(t))
-        })
-        .take(10)
-        .collect();
-
-    Ok(Json(json!({
-        "users": users,
-        "projects": projects,
-        "competitions": competitions,
-        "study_groups": study_groups,
-        "expanded_keywords": keywords,
-    })))
+#[derive(Debug, Serialize)]
+pub struct SearchResultItem {
+    pub kind: String, // "user" | "project" | "competition" | "study_group"
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
-pub fn routes() -> Vec<Route> {
-    routes![search_all]
+#[derive(Debug, Serialize)]
+pub struct SearchResponse {
+    pub results: Vec<SearchResultItem>,
+}
+
+// ── Routes ──────────────────────────────────────────────────────────────────
+
+#[rocket::get("/search?<q>&<kind>&<limit>")]
+pub async fn search(
+    state: &State<AppState>,
+    q: String,
+    kind: Option<String>,
+    limit: Option<i64>,
+) -> Result<Json<SearchResponse>, ApiError> {
+    if q.is_empty() {
+        return Err(TeamderError::Validation("Query parameter q is required".into()).into());
+    }
+
+    let limit = limit.unwrap_or(20);
+    let type_filter = kind.as_deref();
+
+    let mut results = Vec::new();
+
+    // Search users
+    if type_filter.is_none() || type_filter == Some("user") {
+        let users = state.db.user_repo().search(&q, limit).await?;
+        for u in users {
+            results.push(SearchResultItem {
+                kind: "user".to_string(),
+                id: u.id,
+                name: u.name,
+                description: u.headline,
+                icon: u.avatar_url,
+            });
+        }
+    }
+
+    // Search projects
+    if type_filter.is_none() || type_filter == Some("project") {
+        let projects = state.db.project_repo().search(&q, limit).await?;
+        for p in projects {
+            results.push(SearchResultItem {
+                kind: "project".to_string(),
+                id: p.id,
+                name: p.name,
+                description: Some(p.description),
+                icon: Some(p.icon),
+            });
+        }
+    }
+
+    // Search competitions
+    if type_filter.is_none() || type_filter == Some("competition") {
+        let comps = state.db.competition_repo().search(&q, limit).await?;
+        for c in comps {
+            results.push(SearchResultItem {
+                kind: "competition".to_string(),
+                id: c.id,
+                name: c.name,
+                description: Some(c.description),
+                icon: Some(c.icon),
+            });
+        }
+    }
+
+    // Search study groups
+    if type_filter.is_none() || type_filter == Some("study_group") {
+        let groups = state.db.study_group_repo().search(&q, limit).await?;
+        for g in groups {
+            results.push(SearchResultItem {
+                kind: "study_group".to_string(),
+                id: g.id,
+                name: g.name,
+                description: g.description,
+                icon: Some(g.icon),
+            });
+        }
+    }
+
+    // Limit total results
+    results.truncate(limit as usize);
+
+    Ok(Json(SearchResponse { results }))
 }

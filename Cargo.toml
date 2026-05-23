@@ -1,73 +1,14 @@
 [workspace]
-members = [
-    "crates/teamder-core",
-    "crates/teamder-db",
-    "crates/teamder-api",
-]
+members = ["crates/teamder-core", "crates/teamder-db", "crates/teamder-api"]
 resolver = "2"
 
-[workspace.package]
-version = "0.1.0"
-edition = "2021"
-authors = ["WatchAndyTW"]
-license = "MIT"
-
-[profile.release]
-opt-level = 3
-lto = "thin"
-codegen-units = 1
-strip = "symbols"
-panic = "abort"
-
 [workspace.dependencies]
-# Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-# MongoDB
-mongodb = { version = "3" }
-
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-
-# Web framework
-rocket = { version = "0.5", features = ["json"] }
-
-# Error handling
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
 thiserror = "2"
 anyhow = "1"
-
-# Time
-chrono = { version = "0.4", features = ["serde"] }
-
-# Validation
-validator = { version = "0.19", features = ["derive"] }
-
-# UUID
-uuid = { version = "1", features = ["v4", "serde"] }
-
-# Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# CORS
-rocket_cors = "0.6"
-
-# WebSockets
-rocket_ws = "0.1"
-
-# bcrypt for passwords
-bcrypt = "0.15"
-
-# JWT
-jsonwebtoken = "9"
-
-# Futures utilities
-futures-util = "0.3"
-
-# Dotenv
-dotenvy = "0.15"
-
-# Internal crates
-teamder-core = { path = "crates/teamder-core" }
-teamder-db = { path = "crates/teamder-db" }
+validator = { version = "0.19", features = ["derive"] }

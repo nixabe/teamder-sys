@@ -1,93 +1,137 @@
-use rocket::{Route, State, serde::json::Json};
+use chrono::Utc;
+use rocket::serde::json::Json;
+use rocket::State;
 use serde::{Deserialize, Serialize};
-use teamder_core::{
-    error::TeamderError,
-    models::user::{CreateUserRequest, User},
-};
+use uuid::Uuid;
 
-use crate::{auth, error::ApiResult, state::AppState};
+use crate::auth::create_token;
+use crate::error::ApiError;
+use crate::state::AppState;
+use teamder_core::error::TeamderError;
+use teamder_core::models::user::{CreateUserRequest, User, UserResponse};
+
+// ── Request / Response DTOs ─────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-struct LoginRequest {
-    email: String,
-    password: String,
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
 }
 
 #[derive(Debug, Serialize)]
-struct AuthResponse {
-    token: String,
-    user: teamder_core::models::user::UserResponse,
+pub struct AuthResponse {
+    pub token: String,
+    pub user: UserResponse,
 }
 
-/// POST /api/v1/auth/register
-#[post("/register", data = "<req>")]
-async fn register(
-    req: Json<CreateUserRequest>,
+#[derive(Debug, Deserialize)]
+pub struct ForgotPasswordRequest {
+    pub email: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ForgotPasswordResponse {
+    pub success: bool,
+    pub reset_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SuccessResponse {
+    pub success: bool,
+}
+
+// ── Routes ──────────────────────────────────────────────────────────────────
+
+#[rocket::post("/auth/register", data = "<body>")]
+pub async fn register(
     state: &State<AppState>,
-) -> ApiResult<AuthResponse> {
-    let email = req.email.trim().to_lowercase();
+    body: Json<CreateUserRequest>,
+) -> Result<Json<AuthResponse>, ApiError> {
+    let req = body.into_inner();
 
-    // Check if email already exists
-    if state
-        .users
-        .find_by_email(&email)
-        .await?
-        .is_some()
-    {
-        return Err(TeamderError::Conflict(format!(
-            "Email {} is already registered",
-            email
-        ))
-        .into());
+    // Validate
+    if req.email.is_empty() || req.password.is_empty() || req.name.is_empty() {
+        return Err(TeamderError::Validation("email, password, and name are required".into()).into());
     }
 
-    let password_hash = bcrypt::hash(&req.password, bcrypt::DEFAULT_COST)
-        .map_err(|e| TeamderError::Internal(e.to_string()))?;
+    // Check duplicate email
+    if state.db.user_repo().find_by_email(&req.email).await?.is_some() {
+        return Err(TeamderError::Conflict("Email already registered".into()).into());
+    }
 
-    let mut user = User::new(
-        &email,
+    // Hash password
+    let password_hash =
+        bcrypt::hash(&req.password, 12).map_err(|e| TeamderError::Internal(e.to_string()))?;
+
+    let now = Utc::now();
+    let id = Uuid::new_v4().to_string();
+
+    // Build initials
+    let initials: String = req
+        .name
+        .split_whitespace()
+        .take(2)
+        .filter_map(|w| w.chars().next())
+        .map(|c| c.to_uppercase().to_string())
+        .collect();
+
+    let user = User {
+        id: id.clone(),
+        email: req.email,
         password_hash,
-        &req.name,
-        &req.role,
-        &req.department,
-    );
-    if let Some(u) = &req.university {
-        if !u.trim().is_empty() { user.university = u.clone(); }
-    }
-    if let Some(y) = &req.year {
-        if !y.trim().is_empty() { user.year = y.clone(); }
-    }
-    if let Some(h) = &req.headline {
-        if !h.trim().is_empty() { user.headline = Some(h.clone()); }
-    }
-    if let Some(l) = &req.location {
-        if !l.trim().is_empty() { user.location = Some(l.clone()); }
-    }
-    if let Some(wm) = &req.work_mode {
-        user.work_mode = wm.clone();
-    }
-    if let Some(h) = &req.hours_per_week {
-        if !h.trim().is_empty() { user.hours_per_week = h.clone(); }
-    }
-    if let Some(langs) = &req.languages {
-        if !langs.is_empty() { user.languages = langs.clone(); }
-    }
-    if let Some(links) = &req.social_links {
-        user.social_links = links.clone();
-    }
-    if let Some(tags) = &req.interests {
-        user.interests = tags.clone();
-    }
-    if let Some(tz) = &req.timezone {
-        if !tz.trim().is_empty() { user.timezone = Some(tz.clone()); }
-    }
-    if let Some(g) = &req.goals {
-        if !g.trim().is_empty() { user.goals = Some(g.clone()); }
-    }
+        name: req.name,
+        initials,
+        role: req.role.unwrap_or_default(),
+        department: req.department.unwrap_or_default(),
+        university: req.university.unwrap_or_else(|| "Fu Jen Catholic University".to_string()),
+        year: req.year.unwrap_or_else(|| "N/A".to_string()),
+        location: None,
+        bio: req.bio.unwrap_or_default(),
+        skills: req.skills.unwrap_or_default(),
+        skill_tags: req.skill_tags.unwrap_or_default(),
+        gradient: String::new(),
+        work_mode: None,
+        availability: None,
+        hours_per_week: None,
+        languages: req
+            .languages
+            .unwrap_or_else(|| vec!["Chinese".into(), "English".into()]),
+        portfolio: vec![],
+        reviews: vec![],
+        match_score: None,
+        rating: 0.0,
+        projects_done: 0,
+        collaborations: 0,
+        avatar_url: None,
+        resume_url: None,
+        reset_token: None,
+        reset_token_expires_at: None,
+        is_admin: false,
+        is_publisher: false,
+        is_public: true,
+        onboarded: false,
+        headline: None,
+        notify_email: true,
+        notify_in_app: true,
+        social_links: vec![],
+        interests: req.interests.unwrap_or_default(),
+        timezone: None,
+        goals: None,
+        free_days: vec![],
+        created_at: now,
+        updated_at: now,
+    };
 
-    state.users.create(&user).await?;
+    state.db.user_repo().create(&user).await?;
 
-    let token = auth::create_token(&user.id, &user.email, user.is_admin, user.is_publisher, &state.jwt_secret)?;
+    let token =
+        create_token(&id, &state.jwt_secret).map_err(|e| TeamderError::Internal(e.to_string()))?;
 
     Ok(Json(AuthResponse {
         token,
@@ -95,33 +139,29 @@ async fn register(
     }))
 }
 
-/// POST /api/v1/auth/login
-#[post("/login", data = "<req>")]
-async fn login(req: Json<LoginRequest>, state: &State<AppState>) -> ApiResult<AuthResponse> {
-    let email = req.email.trim().to_lowercase();
+#[rocket::post("/auth/login", data = "<body>")]
+pub async fn login(
+    state: &State<AppState>,
+    body: Json<LoginRequest>,
+) -> Result<Json<AuthResponse>, ApiError> {
+    let req = body.into_inner();
 
     let user = state
-        .users
-        .find_by_email(&email)
-        .await
-        .map_err(|e| {
-            tracing::error!("DB error during login for {}: {}", email, e);
-            e
-        })?
-        .ok_or_else(|| {
-            tracing::warn!("Login failed: no user found for email {}", email);
-            TeamderError::Unauthorized
-        })?;
+        .db
+        .user_repo()
+        .find_by_email(&req.email)
+        .await?
+        .ok_or_else(|| TeamderError::Unauthorized("Invalid email or password".into()))?;
 
     let valid = bcrypt::verify(&req.password, &user.password_hash)
         .map_err(|e| TeamderError::Internal(e.to_string()))?;
 
     if !valid {
-        tracing::warn!("Login failed: wrong password for email {}", email);
-        return Err(TeamderError::Unauthorized.into());
+        return Err(TeamderError::Unauthorized("Invalid email or password".into()).into());
     }
 
-    let token = auth::create_token(&user.id, &user.email, user.is_admin, user.is_publisher, &state.jwt_secret)?;
+    let token = create_token(&user.id, &state.jwt_secret)
+        .map_err(|e| TeamderError::Internal(e.to_string()))?;
 
     Ok(Json(AuthResponse {
         token,
@@ -129,89 +169,72 @@ async fn login(req: Json<LoginRequest>, state: &State<AppState>) -> ApiResult<Au
     }))
 }
 
-#[derive(Debug, Deserialize)]
-struct ForgotPasswordRequest {
-    email: String,
-}
-
-#[derive(Debug, Serialize)]
-struct ForgotPasswordResponse {
-    /// Always true — never reveals whether the email is registered, to avoid
-    /// leaking the user list. The token is included only in dev (no SMTP).
-    success: bool,
-    /// In production this would be sent via email; we return it directly so the
-    /// frontend can show a "your reset link" callout without infrastructure.
-    reset_token: Option<String>,
-}
-
-/// POST /api/v1/auth/forgot-password
-#[post("/forgot-password", data = "<req>")]
-async fn forgot_password(
-    req: Json<ForgotPasswordRequest>,
+#[rocket::post("/auth/forgot-password", data = "<body>")]
+pub async fn forgot_password(
     state: &State<AppState>,
-) -> ApiResult<ForgotPasswordResponse> {
-    let user = state.users.find_by_email(&req.email).await?;
-    let token_opt = if let Some(u) = user {
-        // Two UUIDs concatenated (hyphens stripped) → 64-char hex token.
-        // Valid for 30 minutes. Cryptographic uniqueness is enough here since
-        // the token is checked exact-match and short-lived.
-        let token = format!(
-            "{}{}",
-            uuid::Uuid::new_v4().simple(),
-            uuid::Uuid::new_v4().simple()
-        );
-        let expires = chrono::Utc::now() + chrono::Duration::minutes(30);
-        state
-            .users
-            .set_reset_token(&u.id, Some(&token), Some(expires))
-            .await?;
-        Some(token)
-    } else {
-        None
-    };
+    body: Json<ForgotPasswordRequest>,
+) -> Result<Json<ForgotPasswordResponse>, ApiError> {
+    let req = body.into_inner();
+
+    let user = state.db.user_repo().find_by_email(&req.email).await?;
+    if user.is_none() {
+        // Don't reveal whether email exists, but in dev mode return success
+        return Ok(Json(ForgotPasswordResponse {
+            success: true,
+            reset_token: String::new(),
+        }));
+    }
+
+    // Generate 64-char hex token
+    let reset_token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    let expires_at = Utc::now() + chrono::Duration::minutes(30);
+
+    state
+        .db
+        .user_repo()
+        .set_reset_token(&req.email, &reset_token, expires_at)
+        .await?;
+
     Ok(Json(ForgotPasswordResponse {
         success: true,
-        reset_token: token_opt,
+        reset_token,
     }))
 }
 
-#[derive(Debug, Deserialize)]
-struct ResetPasswordRequest {
-    token: String,
-    new_password: String,
-}
-
-/// POST /api/v1/auth/reset-password
-#[post("/reset-password", data = "<req>")]
-async fn reset_password(
-    req: Json<ResetPasswordRequest>,
+#[rocket::post("/auth/reset-password", data = "<body>")]
+pub async fn reset_password(
     state: &State<AppState>,
-) -> ApiResult<serde_json::Value> {
-    if req.new_password.len() < 6 {
-        return Err(TeamderError::Validation("Password must be at least 6 characters".into()).into());
-    }
+    body: Json<ResetPasswordRequest>,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    let req = body.into_inner();
 
     let user = state
-        .users
+        .db
+        .user_repo()
         .find_by_reset_token(&req.token)
         .await?
-        .ok_or_else(|| TeamderError::Unauthorized)?;
+        .ok_or_else(|| TeamderError::Validation("Invalid or expired reset token".into()))?;
 
-    let valid = user
-        .reset_token_expires_at
-        .map(|exp| exp > chrono::Utc::now())
-        .unwrap_or(false);
-    if !valid {
-        return Err(TeamderError::Unauthorized.into());
+    // Check expiry
+    if let Some(expires) = user.reset_token_expires_at {
+        if Utc::now() > expires {
+            return Err(TeamderError::Validation("Reset token has expired".into()).into());
+        }
+    } else {
+        return Err(TeamderError::Validation("Invalid reset token".into()).into());
     }
 
-    let hash = bcrypt::hash(&req.new_password, bcrypt::DEFAULT_COST)
-        .map_err(|e| TeamderError::Internal(e.to_string()))?;
-    state.users.set_password_hash(&user.id, &hash).await?;
+    // Hash new password
+    let password_hash =
+        bcrypt::hash(&req.password, 12).map_err(|e| TeamderError::Internal(e.to_string()))?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
-}
+    use mongodb::bson;
+    let update = bson::doc! {
+        "password_hash": &password_hash,
+        "updated_at": bson::DateTime::from_chrono(Utc::now()),
+    };
+    state.db.user_repo().update(&user.id, update).await?;
+    state.db.user_repo().clear_reset_token(&user.id).await?;
 
-pub fn routes() -> Vec<Route> {
-    routes![register, login, forgot_password, reset_password]
+    Ok(Json(SuccessResponse { success: true }))
 }

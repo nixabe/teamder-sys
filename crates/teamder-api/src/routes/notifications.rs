@@ -1,32 +1,56 @@
-use rocket::{Route, State, serde::json::Json};
-use serde_json::{Value, json};
-use teamder_core::models::notification::NotificationResponse;
+use rocket::serde::json::Json;
+use rocket::State;
+use serde::Serialize;
 
-use crate::{error::ApiResult, guards::AuthUser, state::AppState};
+use crate::error::ApiError;
+use crate::guards::AuthUser;
+use crate::state::AppState;
+use teamder_core::models::notification::Notification;
 
-/// GET /api/v1/notifications  — current user's notifications + unread count.
-#[get("/")]
-async fn list_mine(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
-    let raw = state.notifications.list_for_user(&auth.0.sub, 100).await?;
-    let unread = state.notifications.unread_count(&auth.0.sub).await?;
-    let data: Vec<NotificationResponse> = raw.into_iter().map(Into::into).collect();
-    Ok(Json(json!({ "data": data, "unread": unread })))
+// ── DTOs ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct SuccessResponse {
+    pub success: bool,
 }
 
-/// POST /api/v1/notifications/<id>/read
-#[post("/<id>/read")]
-async fn mark_read(id: String, auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
-    state.notifications.mark_read(&id, &auth.0.sub).await?;
-    Ok(Json(json!({ "success": true })))
+// ── Routes ──────────────────────────────────────────────────────────────────
+
+#[rocket::get("/notifications?<limit>")]
+pub async fn list_notifications(
+    state: &State<AppState>,
+    auth: AuthUser,
+    limit: Option<i64>,
+) -> Result<Json<Vec<Notification>>, ApiError> {
+    let limit = limit.unwrap_or(50);
+    let notifs = state
+        .db
+        .notification_repo()
+        .list(&auth.user_id, limit)
+        .await?;
+    Ok(Json(notifs))
 }
 
-/// POST /api/v1/notifications/read-all
-#[post("/read-all")]
-async fn mark_all_read(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
-    state.notifications.mark_all_read(&auth.0.sub).await?;
-    Ok(Json(json!({ "success": true })))
+#[rocket::post("/notifications/<id>/read")]
+pub async fn mark_read(
+    state: &State<AppState>,
+    auth: AuthUser,
+    id: &str,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    let _auth = auth;
+    state.db.notification_repo().mark_read(id).await?;
+    Ok(Json(SuccessResponse { success: true }))
 }
 
-pub fn routes() -> Vec<Route> {
-    routes![list_mine, mark_read, mark_all_read]
+#[rocket::post("/notifications/read-all")]
+pub async fn read_all(
+    state: &State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    state
+        .db
+        .notification_repo()
+        .mark_all_read(&auth.user_id)
+        .await?;
+    Ok(Json(SuccessResponse { success: true }))
 }

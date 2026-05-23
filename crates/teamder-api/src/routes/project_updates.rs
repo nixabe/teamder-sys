@@ -1,94 +1,131 @@
-use rocket::{Route, State, serde::json::Json};
-use serde_json::{Value, json};
-use teamder_core::{
-    error::TeamderError,
-    models::{
-        notification::{Notification, NotificationKind},
-        project_update::{CreateProjectUpdateRequest, ProjectUpdate, ProjectUpdateResponse},
-    },
-};
+use chrono::Utc;
+use rocket::serde::json::Json;
+use rocket::State;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::{error::ApiResult, guards::AuthUser, state::AppState};
+use crate::error::ApiError;
+use crate::guards::AuthUser;
+use crate::state::AppState;
+use teamder_core::error::TeamderError;
+use teamder_core::models::notification::Notification;
+use teamder_core::models::project_update::ProjectUpdate;
 
-/// GET /api/v1/projects/<id>/updates  (public)
-#[get("/<id>/updates")]
-async fn list_updates(id: String, state: &State<AppState>) -> ApiResult<Value> {
-    let raw = state.project_updates.list_for_project(&id).await?;
-    let data: Vec<ProjectUpdateResponse> = raw.into_iter().map(Into::into).collect();
-    Ok(Json(json!({ "data": data })))
+// ── DTOs ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CreateUpdateBody {
+    pub kind: String,
+    pub title: String,
+    #[serde(default)]
+    pub body: Option<String>,
 }
 
-/// POST /api/v1/projects/<id>/updates  (auth — lead or team member)
-#[post("/<id>/updates", data = "<req>")]
-async fn create_update(
-    id: String,
-    req: Json<CreateProjectUpdateRequest>,
-    auth: AuthUser,
+#[derive(Debug, Serialize)]
+pub struct SuccessResponse {
+    pub success: bool,
+}
+
+// ── Routes ──────────────────────────────────────────────────────────────────
+
+#[rocket::get("/projects/<id>/updates")]
+pub async fn list_updates(
     state: &State<AppState>,
-) -> ApiResult<ProjectUpdateResponse> {
-    let project = state.projects.find_by_id(&id).await?
+    id: &str,
+) -> Result<Json<Vec<ProjectUpdate>>, ApiError> {
+    let updates = state.db.project_update_repo().list_by_project(id).await?;
+    Ok(Json(updates))
+}
+
+#[rocket::post("/projects/<id>/updates", data = "<body>")]
+pub async fn create_update(
+    state: &State<AppState>,
+    auth: AuthUser,
+    id: &str,
+    body: Json<CreateUpdateBody>,
+) -> Result<Json<ProjectUpdate>, ApiError> {
+    let project = state
+        .db
+        .project_repo()
+        .find_by_id(id)
+        .await?
         .ok_or_else(|| TeamderError::NotFound("Project not found".into()))?;
 
-    let is_member = project.lead_user_id == auth.0.sub
-        || project.team.iter().any(|m| m.user_id == auth.0.sub);
-    if !is_member && !auth.0.is_admin {
-        return Err(TeamderError::Forbidden.into());
+    // Verify author is a team member
+    let is_member = project.team.iter().any(|m| m.user_id == auth.user_id);
+    if !is_member {
+        return Err(TeamderError::Forbidden("Only team members can post updates".into()).into());
     }
 
-    let user = state.users.find_by_id(&auth.0.sub).await?
+    let author = state
+        .db
+        .user_repo()
+        .find_by_id(&auth.user_id)
+        .await?
         .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
 
-    if req.title.trim().is_empty() || req.body.trim().is_empty() {
-        return Err(TeamderError::Validation("Title and body required".into()).into());
+    let req = body.into_inner();
+    let now = Utc::now();
+    let update_id = Uuid::new_v4().to_string();
+
+    let update = ProjectUpdate {
+        id: update_id.clone(),
+        project_id: id.to_string(),
+        author_id: auth.user_id.clone(),
+        author_name: author.name.clone(),
+        kind: req.kind,
+        title: req.title.clone(),
+        body: req.body.unwrap_or_default(),
+        created_at: now,
+    };
+
+    state.db.project_update_repo().create(&update).await?;
+
+    // Notify all OTHER team members + lead
+    for member in &project.team {
+        if member.user_id != auth.user_id {
+            let notif = Notification {
+                id: Uuid::new_v4().to_string(),
+                user_id: member.user_id.clone(),
+                kind: "project_update".to_string(),
+                title: format!("New update in {}", project.name),
+                body: req.title.clone(),
+                link: Some(format!("/projects/{}", id)),
+                read: false,
+                created_at: now,
+            };
+            let _ = state.db.notification_repo().create(&notif).await;
+        }
     }
 
-    let update = ProjectUpdate::new(
-        id.clone(),
-        user.id.clone(),
-        user.name.clone(),
-        req.0.kind,
-        req.0.title,
-        req.0.body,
-    );
-    state.project_updates.create(&update).await?;
-
-    // Notify other team members.
-    let body_preview = update.title.clone();
-    for member in project.team.iter().chain(std::iter::once(&teamder_core::models::project::TeamMember {
-        user_id: project.lead_user_id.clone(),
-        initials: String::new(),
-        color: String::new(),
-        joined_at: project.created_at,
-        role: None,
-    })) {
-        if member.user_id == user.id { continue; }
-        let n = Notification::new(
-            member.user_id.clone(),
-            NotificationKind::System,
-            format!("Update on {}", project.name),
-            body_preview.clone(),
-            Some(format!("/projects")),
-        );
-        let _ = state.notifications.create(&n).await;
-    }
-
-    Ok(Json(update.into()))
+    Ok(Json(update))
 }
 
-/// DELETE /api/v1/projects/<project_id>/updates/<update_id>  (auth — author or admin)
-#[delete("/<project_id>/updates/<update_id>")]
-async fn delete_update(
-    project_id: String,
-    update_id: String,
-    auth: AuthUser,
+#[rocket::delete("/projects/<id>/updates/<update_id>")]
+pub async fn delete_update(
     state: &State<AppState>,
-) -> ApiResult<Value> {
-    let _ = project_id;
-    state.project_updates.delete(&update_id).await?;
-    let _ = auth;
-    Ok(Json(json!({ "success": true })))
-}
+    auth: AuthUser,
+    id: &str,
+    update_id: &str,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    let project = state
+        .db
+        .project_repo()
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("Project not found".into()))?;
 
-pub fn routes() -> Vec<Route> {
-    routes![list_updates, create_update, delete_update]
+    // Only author or lead can delete
+    let updates = state.db.project_update_repo().list_by_project(id).await?;
+    let update = updates
+        .iter()
+        .find(|u| u.id == update_id)
+        .ok_or_else(|| TeamderError::NotFound("Update not found".into()))?;
+
+    if update.author_id != auth.user_id && project.lead_user_id != auth.user_id {
+        return Err(TeamderError::Forbidden("Not authorized to delete this update".into()).into());
+    }
+
+    state.db.project_update_repo().delete(update_id).await?;
+    Ok(Json(SuccessResponse { success: true }))
 }

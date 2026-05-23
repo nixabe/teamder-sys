@@ -1,52 +1,86 @@
-use rocket::{Route, State, serde::json::Json};
-use serde_json::{Value, json};
-use teamder_core::{
-    error::TeamderError,
-    models::bookmark::{Bookmark, BookmarkKind, BookmarkResponse, CreateBookmarkRequest},
-};
+use chrono::Utc;
+use rocket::serde::json::Json;
+use rocket::State;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::{error::ApiResult, guards::AuthUser, state::AppState};
+use crate::error::ApiError;
+use crate::guards::AuthUser;
+use crate::state::AppState;
+use teamder_core::models::bookmark::Bookmark;
 
-/// GET /api/v1/bookmarks
-#[get("/")]
-async fn list_mine(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
-    let raw = state.bookmarks.list_for_user(&auth.0.sub).await?;
-    let data: Vec<BookmarkResponse> = raw.into_iter().map(Into::into).collect();
-    Ok(Json(json!({ "data": data })))
+// ── DTOs ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct AddBookmarkBody {
+    pub kind: String,
+    pub entity_id: String,
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
-/// POST /api/v1/bookmarks
-#[post("/", data = "<req>")]
-async fn add(
-    req: Json<CreateBookmarkRequest>,
-    auth: AuthUser,
+#[derive(Debug, Deserialize)]
+pub struct RemoveBookmarkBody {
+    pub kind: String,
+    pub entity_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SuccessResponse {
+    pub success: bool,
+}
+
+// ── Routes ──────────────────────────────────────────────────────────────────
+
+#[rocket::get("/bookmarks")]
+pub async fn list_bookmarks(
     state: &State<AppState>,
-) -> ApiResult<Value> {
-    if state.bookmarks.exists(&auth.0.sub, &req.kind, &req.entity_id).await? {
-        return Err(TeamderError::Conflict("Already bookmarked".into()).into());
-    }
-    let b = Bookmark::new(&auth.0.sub, req.0.kind, req.0.entity_id, req.0.label);
-    state.bookmarks.create(&b).await?;
-    Ok(Json(json!({ "id": b.id })))
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct RemoveBookmarkRequest {
-    kind: BookmarkKind,
-    entity_id: String,
-}
-
-/// POST /api/v1/bookmarks/remove  (idempotent)
-#[post("/remove", data = "<req>")]
-async fn remove(
-    req: Json<RemoveBookmarkRequest>,
     auth: AuthUser,
-    state: &State<AppState>,
-) -> ApiResult<Value> {
-    state.bookmarks.delete(&auth.0.sub, &req.kind, &req.entity_id).await?;
-    Ok(Json(json!({ "success": true })))
+) -> Result<Json<Vec<Bookmark>>, ApiError> {
+    let bookmarks = state
+        .db
+        .bookmark_repo()
+        .list(&auth.user_id)
+        .await?;
+    Ok(Json(bookmarks))
 }
 
-pub fn routes() -> Vec<Route> {
-    routes![list_mine, add, remove]
+#[rocket::post("/bookmarks", data = "<body>")]
+pub async fn add_bookmark(
+    state: &State<AppState>,
+    auth: AuthUser,
+    body: Json<AddBookmarkBody>,
+) -> Result<Json<Bookmark>, ApiError> {
+    let req = body.into_inner();
+    let now = Utc::now();
+
+    let bookmark = Bookmark {
+        id: Uuid::new_v4().to_string(),
+        user_id: auth.user_id,
+        kind: req.kind,
+        entity_id: req.entity_id,
+        label: req.label.unwrap_or_default(),
+        created_at: now,
+    };
+
+    state.db.bookmark_repo().create(&bookmark).await?;
+
+    Ok(Json(bookmark))
+}
+
+#[rocket::post("/bookmarks/remove", data = "<body>")]
+pub async fn remove_bookmark(
+    state: &State<AppState>,
+    auth: AuthUser,
+    body: Json<RemoveBookmarkBody>,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    let req = body.into_inner();
+
+    state
+        .db
+        .bookmark_repo()
+        .remove(&auth.user_id, &req.kind, &req.entity_id)
+        .await?;
+
+    Ok(Json(SuccessResponse { success: true }))
 }

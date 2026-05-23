@@ -1,13 +1,13 @@
 pub mod user;
 pub mod project;
 pub mod competition;
+pub mod competition_team;
 pub mod study_group;
 pub mod invite;
-pub mod message;
 pub mod join_request;
 pub mod peer_review;
 pub mod notification;
-pub mod competition_team;
+pub mod message;
 pub mod bookmark;
-pub mod project_update;
 pub mod skill_catalog;
+pub mod project_update;

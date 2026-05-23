@@ -1,43 +1,41 @@
-use futures_util::TryStreamExt;
-use mongodb::{
-    Collection,
-    bson::doc,
-    options::FindOptions,
-};
-use teamder_core::{
-    error::TeamderError,
-    models::notification::Notification,
-};
+use futures::TryStreamExt;
+use mongodb::bson::doc;
+use mongodb::options::FindOptions;
+use mongodb::{Collection, Database};
+use teamder_core::error::TeamderError;
+use teamder_core::models::notification::Notification;
 
-use crate::DbClient;
-
-#[derive(Clone)]
 pub struct NotificationRepo {
-    col: Collection<Notification>,
+    collection: Collection<Notification>,
 }
 
 impl NotificationRepo {
-    pub fn new(db: &DbClient) -> Self {
+    pub fn new(db: &Database) -> Self {
         Self {
-            col: db.db.collection("notifications"),
+            collection: db.collection::<Notification>("notifications"),
         }
     }
 
-    pub async fn create(&self, n: &Notification) -> Result<(), TeamderError> {
-        self.col
-            .insert_one(n)
+    pub async fn create(&self, notif: &Notification) -> Result<(), TeamderError> {
+        self.collection
+            .insert_one(notif)
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
 
-    pub async fn list_for_user(&self, user_id: &str, limit: i64) -> Result<Vec<Notification>, TeamderError> {
+    pub async fn list(
+        &self,
+        user_id: &str,
+        limit: i64,
+    ) -> Result<Vec<Notification>, TeamderError> {
         let opts = FindOptions::builder()
-            .sort(doc! { "created_at": -1 })
             .limit(limit)
+            .sort(doc! { "created_at": -1 })
             .build();
+
         let cursor = self
-            .col
+            .collection
             .find(doc! { "user_id": user_id })
             .with_options(opts)
             .await
@@ -48,26 +46,16 @@ impl NotificationRepo {
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
-    pub async fn unread_count(&self, user_id: &str) -> Result<u64, TeamderError> {
-        self.col
-            .count_documents(doc! { "user_id": user_id, "read": false })
-            .await
-            .map_err(|e| TeamderError::Database(e.to_string()))
-    }
-
-    pub async fn mark_read(&self, id: &str, user_id: &str) -> Result<(), TeamderError> {
-        self.col
-            .update_one(
-                doc! { "_id": id, "user_id": user_id },
-                doc! { "$set": { "read": true } },
-            )
+    pub async fn mark_read(&self, id: &str) -> Result<(), TeamderError> {
+        self.collection
+            .update_one(doc! { "_id": id }, doc! { "$set": { "read": true } })
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
 
     pub async fn mark_all_read(&self, user_id: &str) -> Result<(), TeamderError> {
-        self.col
+        self.collection
             .update_many(
                 doc! { "user_id": user_id, "read": false },
                 doc! { "$set": { "read": true } },
@@ -75,5 +63,12 @@ impl NotificationRepo {
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
+    }
+
+    pub async fn count_unread(&self, user_id: &str) -> Result<u64, TeamderError> {
+        self.collection
+            .count_documents(doc! { "user_id": user_id, "read": false })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))
     }
 }

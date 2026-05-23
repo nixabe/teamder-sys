@@ -1,295 +1,293 @@
-use std::collections::HashMap;
-use rocket::{Route, State, serde::json::Json};
-use serde_json::{Value, json};
-use teamder_core::{
-    error::TeamderError,
-    models::invite::{Invite, InviteResponse, RespondInviteRequest, SendInviteRequest, InviteStatus},
-    models::notification::{Notification, NotificationKind},
-};
+use chrono::{Duration, Utc};
+use rocket::serde::json::Json;
+use rocket::State;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::{error::ApiResult, guards::AuthUser, state::AppState};
+use crate::error::ApiError;
+use crate::guards::AuthUser;
+use crate::state::AppState;
+use teamder_core::error::TeamderError;
+use teamder_core::models::competition_team::CompTeamMember;
+use teamder_core::models::invite::Invite;
+use teamder_core::models::notification::Notification;
+use teamder_core::models::project::TeamMember;
+use teamder_core::models::study_group::GroupMember;
 
-/// Resolve names for a batch of invites with a minimum number of lookups.
-async fn enrich_invites(
-    invites: Vec<Invite>,
-    state: &AppState,
-) -> Result<Vec<InviteResponse>, TeamderError> {
-    // Collect unique user IDs
-    let user_ids: Vec<&str> = {
-        let mut ids: Vec<&str> = invites.iter()
-            .flat_map(|i| [i.from_user_id.as_str(), i.to_user_id.as_str()])
-            .collect();
-        ids.sort_unstable();
-        ids.dedup();
-        ids
-    };
-    let users = state.users.find_many_by_ids(&user_ids).await?;
-    let user_names: HashMap<&str, &str> = users.iter()
-        .map(|u| (u.id.as_str(), u.name.as_str()))
-        .collect();
+// ── DTOs ────────────────────────────────────────────────────────────────────
 
-    let mut result = Vec::with_capacity(invites.len());
-    for inv in invites {
-        let from_user_name = user_names.get(inv.from_user_id.as_str()).copied().unwrap_or("").to_string();
-        let to_user_name = user_names.get(inv.to_user_id.as_str()).copied().unwrap_or("").to_string();
-
-        let project_name = if let Some(pid) = &inv.project_id {
-            state.projects.find_by_id(pid).await?.map(|p| p.name)
-        } else {
-            None
-        };
-        let study_group_name = if let Some(sgid) = &inv.study_group_id {
-            state.study_groups.find_by_id(sgid).await?.map(|g| g.name)
-        } else {
-            None
-        };
-        let competition_team_name = if let Some(ctid) = &inv.competition_team_id {
-            state.competition_teams.find_by_id(ctid).await?.map(|ct| ct.name)
-        } else {
-            None
-        };
-
-        result.push(InviteResponse {
-            id: inv.id,
-            from_user_id: inv.from_user_id,
-            from_user_name,
-            to_user_id: inv.to_user_id,
-            to_user_name,
-            project_id: inv.project_id,
-            project_name,
-            study_group_id: inv.study_group_id,
-            study_group_name,
-            competition_team_id: inv.competition_team_id,
-            competition_team_name,
-            message: inv.message,
-            status: inv.status,
-            is_read: inv.is_read,
-            created_at: inv.created_at,
-            expires_at: inv.expires_at,
-        });
-    }
-    Ok(result)
+#[derive(Debug, Deserialize)]
+pub struct SendInviteBody {
+    pub to_user_id: String,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub study_group_id: Option<String>,
+    #[serde(default)]
+    pub competition_team_id: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
 }
 
-/// POST /api/v1/invites  (auth)
-#[post("/", data = "<req>")]
-async fn send_invite(
-    req: Json<SendInviteRequest>,
-    auth: AuthUser,
+#[derive(Debug, Deserialize)]
+pub struct RespondBody {
+    pub accept: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SuccessResponse {
+    pub success: bool,
+}
+
+// ── Routes ──────────────────────────────────────────────────────────────────
+
+#[rocket::get("/invites")]
+pub async fn list_invites(
     state: &State<AppState>,
-) -> ApiResult<InviteResponse> {
-    // Verify recipient exists and grab their name
-    let recipient = state
-        .users
-        .find_by_id(&req.to_user_id)
+    auth: AuthUser,
+) -> Result<Json<Vec<Invite>>, ApiError> {
+    let invites = state
+        .db
+        .invite_repo()
+        .list_for_user(&auth.user_id)
+        .await?;
+    Ok(Json(invites))
+}
+
+#[rocket::get("/invites/<id>")]
+pub async fn get_invite(
+    state: &State<AppState>,
+    auth: AuthUser,
+    id: &str,
+) -> Result<Json<Invite>, ApiError> {
+    let invite = state
+        .db
+        .invite_repo()
+        .find_by_id(id)
         .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("User {} not found", req.to_user_id)))?;
+        .ok_or_else(|| TeamderError::NotFound("Invite not found".into()))?;
 
-    let sender = state
-        .users
-        .find_by_id(&auth.0.sub)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound("Sender not found".into()))?;
-
-    let mut invite = Invite::new(&auth.0.sub, &req.to_user_id);
-    invite.message = req.message.clone();
-
-    if let Some(pid) = &req.project_id {
-        if state.projects.find_by_id(pid).await?.is_some() {
-            invite.project_id = Some(pid.clone());
-        }
-    }
-    if let Some(sgid) = &req.study_group_id {
-        if state.study_groups.find_by_id(sgid).await?.is_some() {
-            invite.study_group_id = Some(sgid.clone());
-        }
-    }
-    if let Some(ctid) = &req.competition_team_id {
-        if state.competition_teams.find_by_id(ctid).await?.is_some() {
-            invite.competition_team_id = Some(ctid.clone());
-        }
+    if invite.from_user_id != auth.user_id && invite.to_user_id != auth.user_id {
+        return Err(TeamderError::Forbidden("Not authorized".into()).into());
     }
 
-    // Reject duplicate pending invites between the same pair for the same context.
-    let existing = state.invites
+    Ok(Json(invite))
+}
+
+#[rocket::post("/invites", data = "<body>")]
+pub async fn send_invite(
+    state: &State<AppState>,
+    auth: AuthUser,
+    body: Json<SendInviteBody>,
+) -> Result<Json<Invite>, ApiError> {
+    let req = body.into_inner();
+
+    // Check duplicate pending invite
+    let existing = state
+        .db
+        .invite_repo()
         .find_pending_between(
-            &auth.0.sub,
+            &auth.user_id,
             &req.to_user_id,
-            invite.project_id.as_deref(),
-            invite.study_group_id.as_deref(),
-            invite.competition_team_id.as_deref(),
+            req.project_id.as_deref(),
+            req.study_group_id.as_deref(),
+            req.competition_team_id.as_deref(),
         )
         .await?;
+
     if existing.is_some() {
-        return Err(TeamderError::Conflict(
-            "A pending invite to this user already exists".into(),
-        ).into());
+        return Err(TeamderError::Conflict("A pending invite already exists".into()).into());
     }
 
-    state.invites.create(&invite).await?;
+    let now = Utc::now();
+    let expires_at = now + Duration::days(7);
+    let id = Uuid::new_v4().to_string();
 
-    // Drop a notification for the recipient. Failure here shouldn't break the
-    // invite flow, so we log and continue.
-    let from_user = state.users.find_by_id(&invite.from_user_id).await?;
-    let from_name = from_user.as_ref().map(|u| u.name.clone()).unwrap_or_default();
-    let n = Notification::new(
-        invite.to_user_id.clone(),
-        NotificationKind::Invite,
-        "New invite",
-        format!("{} invited you to collaborate", from_name),
-        Some("/invites".into()),
-    );
-    if let Err(e) = state.notifications.create(&n).await {
-        tracing::warn!("failed to create invite notification: {e}");
-    }
-
-    // Build full response with resolved names
-    let project_name = if let Some(pid) = &invite.project_id {
-        state.projects.find_by_id(pid).await?.map(|p| p.name)
-    } else {
-        None
-    };
-    let study_group_name = if let Some(sgid) = &invite.study_group_id {
-        state.study_groups.find_by_id(sgid).await?.map(|g| g.name)
-    } else {
-        None
-    };
-    let competition_team_name = if let Some(ctid) = &invite.competition_team_id {
-        state.competition_teams.find_by_id(ctid).await?.map(|ct| ct.name)
-    } else {
-        None
-    };
-
-    Ok(Json(InviteResponse {
-        id: invite.id,
-        from_user_id: invite.from_user_id,
-        from_user_name: sender.name,
-        to_user_id: invite.to_user_id,
-        to_user_name: recipient.name,
-        project_id: invite.project_id,
-        project_name,
-        study_group_id: invite.study_group_id,
-        study_group_name,
-        competition_team_id: invite.competition_team_id,
-        competition_team_name,
-        message: invite.message,
-        status: invite.status,
+    let invite = Invite {
+        id: id.clone(),
+        from_user_id: auth.user_id.clone(),
+        to_user_id: req.to_user_id.clone(),
+        project_id: req.project_id,
+        study_group_id: req.study_group_id,
+        competition_team_id: req.competition_team_id,
+        message: req.message,
+        status: "pending".to_string(),
         is_read: false,
-        created_at: invite.created_at,
-        expires_at: invite.expires_at,
-    }))
+        created_at: now,
+        expires_at,
+    };
+
+    state.db.invite_repo().create(&invite).await?;
+
+    // Create notification for recipient
+    let sender = state.db.user_repo().find_by_id(&auth.user_id).await?;
+    let notif = Notification {
+        id: Uuid::new_v4().to_string(),
+        user_id: req.to_user_id,
+        kind: "invite".to_string(),
+        title: format!(
+            "{} sent you an invite",
+            sender.map(|u| u.name).unwrap_or_default()
+        ),
+        body: String::new(),
+        link: Some("/invites".to_string()),
+        read: false,
+        created_at: now,
+    };
+    let _ = state.db.notification_repo().create(&notif).await;
+
+    Ok(Json(invite))
 }
 
-/// GET /api/v1/invites  (auth — invites for the current user)
-#[get("/")]
-async fn list_invites(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
-    let raw = state.invites.list_for_user(&auth.0.sub).await?;
-    let invites = enrich_invites(raw, state.inner()).await?;
-    Ok(Json(json!({ "data": invites })))
-}
-
-/// GET /api/v1/invites/<id>  (auth)
-#[get("/<id>")]
-async fn get_invite(id: String, auth: AuthUser, state: &State<AppState>) -> ApiResult<InviteResponse> {
-    let invite = state
-        .invites
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Invite {} not found", id)))?;
-
-    if invite.from_user_id != auth.0.sub && invite.to_user_id != auth.0.sub && !auth.0.is_admin {
-        return Err(TeamderError::Forbidden.into());
-    }
-
-    let mut enriched = enrich_invites(vec![invite], state.inner()).await?;
-    Ok(Json(enriched.remove(0)))
-}
-
-/// POST /api/v1/invites/<id>/respond  (auth — recipient only)
-#[post("/<id>/respond", data = "<req>")]
-async fn respond_invite(
-    id: String,
-    req: Json<RespondInviteRequest>,
-    auth: AuthUser,
+#[rocket::post("/invites/<id>/respond", data = "<body>")]
+pub async fn respond_invite(
     state: &State<AppState>,
-) -> ApiResult<Value> {
-    let invite = state
-        .invites
-        .find_by_id(&id)
-        .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Invite {} not found", id)))?;
-
-    if invite.to_user_id != auth.0.sub {
-        return Err(TeamderError::Forbidden.into());
-    }
-
-    if invite.status != InviteStatus::Pending {
-        return Err(TeamderError::Conflict("Invite is no longer pending".into()).into());
-    }
-
-    let new_status = if req.accept { InviteStatus::Accepted } else { InviteStatus::Declined };
-    state.invites.update_status(&id, &new_status).await?;
-
-    // Notify the original sender about the response.
-    let recipient_name = state
-        .users
-        .find_by_id(&auth.0.sub)
-        .await?
-        .map(|u| u.name)
-        .unwrap_or_default();
-    let kind = if req.accept { NotificationKind::InviteAccepted } else { NotificationKind::InviteDeclined };
-    let title = if req.accept { "Invite accepted" } else { "Invite declined" };
-    let body = format!("{} {} your invite", recipient_name, if req.accept { "accepted" } else { "declined" });
-    let n = Notification::new(invite.from_user_id.clone(), kind, title, body, Some("/invites".into()));
-    if let Err(e) = state.notifications.create(&n).await {
-        tracing::warn!("failed to create invite-respond notification: {e}");
-    }
-
-    Ok(Json(json!({
-        "success": true,
-        "status": if req.accept { "accepted" } else { "declined" }
-    })))
-}
-
-/// DELETE /api/v1/invites/<id>  (auth — sender only)
-#[delete("/<id>")]
-async fn delete_invite(
-    id: String,
     auth: AuthUser,
-    state: &State<AppState>,
-) -> ApiResult<Value> {
+    id: &str,
+    body: Json<RespondBody>,
+) -> Result<Json<SuccessResponse>, ApiError> {
     let invite = state
-        .invites
-        .find_by_id(&id)
+        .db
+        .invite_repo()
+        .find_by_id(id)
         .await?
-        .ok_or_else(|| TeamderError::NotFound(format!("Invite {} not found", id)))?;
+        .ok_or_else(|| TeamderError::NotFound("Invite not found".into()))?;
 
-    if invite.from_user_id != auth.0.sub && !auth.0.is_admin {
-        return Err(TeamderError::Forbidden.into());
+    if invite.to_user_id != auth.user_id {
+        return Err(TeamderError::Forbidden("Only the recipient can respond".into()).into());
     }
 
-    state.invites.delete_by_id(&id).await?;
-    Ok(Json(json!({ "success": true })))
+    let new_status = if body.accept { "accepted" } else { "declined" };
+    state
+        .db
+        .invite_repo()
+        .update_status(id, new_status)
+        .await?;
+
+    // On accept, add user to the referenced entity
+    if body.accept {
+        let now = Utc::now();
+        let user = state
+            .db
+            .user_repo()
+            .find_by_id(&auth.user_id)
+            .await?
+            .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+
+        if let Some(project_id) = &invite.project_id {
+            let member = TeamMember {
+                user_id: auth.user_id.clone(),
+                initials: user.initials.clone(),
+                color: user.gradient.clone(),
+                joined_at: now,
+                role: None,
+            };
+            let _ = state
+                .db
+                .project_repo()
+                .add_member(project_id, &member)
+                .await;
+        }
+
+        if let Some(sg_id) = &invite.study_group_id {
+            let member = GroupMember {
+                user_id: auth.user_id.clone(),
+                initials: user.initials.clone(),
+                color: user.gradient.clone(),
+                joined_at: now,
+                last_checkin: None,
+                streak: 0,
+            };
+            let _ = state
+                .db
+                .study_group_repo()
+                .add_member(sg_id, &member)
+                .await;
+        }
+
+        if let Some(ct_id) = &invite.competition_team_id {
+            let member = CompTeamMember {
+                user_id: auth.user_id.clone(),
+                name: user.name.clone(),
+                initials: user.initials.clone(),
+                role: None,
+                joined_at: now,
+            };
+            let _ = state
+                .db
+                .competition_team_repo()
+                .add_member(ct_id, &member)
+                .await;
+        }
+    }
+
+    // Create notification for sender
+    let kind = if body.accept {
+        "invite_accepted"
+    } else {
+        "invite_declined"
+    };
+    let responder = state.db.user_repo().find_by_id(&auth.user_id).await?;
+    let notif = Notification {
+        id: Uuid::new_v4().to_string(),
+        user_id: invite.from_user_id,
+        kind: kind.to_string(),
+        title: format!(
+            "{} {} your invite",
+            responder.map(|u| u.name).unwrap_or_default(),
+            if body.accept { "accepted" } else { "declined" }
+        ),
+        body: String::new(),
+        link: Some("/invites".to_string()),
+        read: false,
+        created_at: Utc::now(),
+    };
+    let _ = state.db.notification_repo().create(&notif).await;
+
+    Ok(Json(SuccessResponse { success: true }))
 }
 
-/// PATCH /api/v1/invites/<id>/read  (auth — recipient only)
-#[patch("/<id>/read")]
-async fn mark_read(
-    id: String,
-    auth: AuthUser,
+#[rocket::patch("/invites/<id>/read")]
+pub async fn mark_read(
     state: &State<AppState>,
-) -> ApiResult<Value> {
-    state.invites.mark_read(&id, &auth.0.sub).await?;
-    Ok(Json(json!({ "success": true })))
+    auth: AuthUser,
+    id: &str,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    let _auth = auth; // ensure authenticated
+    state.db.invite_repo().mark_read(id).await?;
+    Ok(Json(SuccessResponse { success: true }))
 }
 
-/// POST /api/v1/invites/read-all  (auth — marks all received invites as read)
-#[post("/read-all")]
-async fn mark_all_read(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
-    state.invites.mark_all_read(&auth.0.sub).await?;
-    Ok(Json(json!({ "success": true })))
+#[rocket::post("/invites/read-all")]
+pub async fn read_all(
+    state: &State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    state
+        .db
+        .invite_repo()
+        .mark_all_read(&auth.user_id)
+        .await?;
+    Ok(Json(SuccessResponse { success: true }))
 }
 
-pub fn routes() -> Vec<Route> {
-    routes![send_invite, list_invites, get_invite, respond_invite, delete_invite, mark_read, mark_all_read]
+#[rocket::delete("/invites/<id>")]
+pub async fn delete_invite(
+    state: &State<AppState>,
+    auth: AuthUser,
+    id: &str,
+) -> Result<Json<SuccessResponse>, ApiError> {
+    let invite = state
+        .db
+        .invite_repo()
+        .find_by_id(id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("Invite not found".into()))?;
+
+    if invite.from_user_id != auth.user_id {
+        return Err(TeamderError::Forbidden("Only the sender can delete".into()).into());
+    }
+
+    state.db.invite_repo().delete(id).await?;
+    Ok(Json(SuccessResponse { success: true }))
 }
