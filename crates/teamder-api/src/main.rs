@@ -15,6 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialise structured logging.
     tracing_subscriber::fmt()
+        .with_ansi(true)
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 

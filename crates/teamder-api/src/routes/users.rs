@@ -36,6 +36,7 @@ pub struct SuccessResponse {
 #[rocket::get("/users?<page>&<limit>&<q>")]
 pub async fn list_users(
     state: &State<AppState>,
+    viewer: OptionalAuth,
     page: Option<u64>,
     limit: Option<i64>,
     q: Option<String>,
@@ -50,7 +51,38 @@ pub async fn list_users(
         .list(skip, limit, q.as_deref())
         .await?;
 
-    let users: Vec<UserResponse> = users.into_iter().map(Into::into).collect();
+    let viewer_tags: Option<std::collections::HashSet<String>> =
+        if let Some(viewer_id) = &viewer.0 {
+            state
+                .db
+                .user_repo()
+                .find_by_id(viewer_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|u| u.skill_tags.into_iter().collect())
+        } else {
+            None
+        };
+
+    let users: Vec<UserResponse> = users
+        .into_iter()
+        .map(|u| {
+            let mut resp: UserResponse = u.into();
+            if let Some(ref vt) = viewer_tags {
+                if !vt.is_empty() && !resp.skill_tags.is_empty() {
+                    let target_tags: std::collections::HashSet<&str> =
+                        resp.skill_tags.iter().map(|s| s.as_str()).collect();
+                    let vt_refs: std::collections::HashSet<&str> =
+                        vt.iter().map(|s| s.as_str()).collect();
+                    let intersection = vt_refs.intersection(&target_tags).count();
+                    let union = vt_refs.union(&target_tags).count();
+                    resp.match_score = Some(((intersection as f64 / union as f64) * 100.0) as u8);
+                }
+            }
+            resp
+        })
+        .collect();
 
     Ok(Json(PaginatedUsers {
         users,

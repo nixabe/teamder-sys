@@ -370,7 +370,7 @@ pub async fn leave_team(
     Ok(Json(SuccessResponse { success: true }))
 }
 
-#[rocket::get("/competition-teams/competition/<comp_id>")]
+#[rocket::get("/competition-teams/competition/<comp_id>", rank = 1)]
 pub async fn teams_by_competition(
     state: &State<AppState>,
     comp_id: &str,
@@ -383,7 +383,7 @@ pub async fn teams_by_competition(
     Ok(Json(teams))
 }
 
-#[rocket::get("/competition-teams/mine")]
+#[rocket::get("/competition-teams/mine", rank = 1)]
 pub async fn my_teams(
     state: &State<AppState>,
     auth: AuthUser,
