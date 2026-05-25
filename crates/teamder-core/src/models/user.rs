@@ -32,6 +32,7 @@ pub struct CachedReview {
     pub project_name: String,
     pub stars: u8,
     pub body: String,
+    #[serde(with = "crate::serde_helpers::flexible_datetime")]
     pub created_at: DateTime<Utc>,
 }
 
@@ -115,7 +116,7 @@ pub struct User {
     #[serde(default)]
     pub reset_token: Option<String>,
 
-    #[serde(default)]
+    #[serde(default, with = "crate::serde_helpers::flexible_datetime_opt")]
     pub reset_token_expires_at: Option<DateTime<Utc>>,
 
     #[serde(default)]
@@ -154,7 +155,9 @@ pub struct User {
     #[serde(default)]
     pub free_days: Vec<String>,
 
+    #[serde(with = "crate::serde_helpers::flexible_datetime")]
     pub created_at: DateTime<Utc>,
+    #[serde(with = "crate::serde_helpers::flexible_datetime")]
     pub updated_at: DateTime<Utc>,
 }
 

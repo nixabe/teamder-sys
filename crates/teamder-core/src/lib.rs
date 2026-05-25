@@ -1,3 +1,4 @@
 pub mod models;
 pub mod error;
+pub mod serde_helpers;
 pub mod skills;
