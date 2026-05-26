@@ -30,12 +30,6 @@ pub struct Registration {
     pub user_id: String,
     pub team_name: Option<String>,
     pub registered_at: DateTime<Utc>,
-    #[serde(default)]
-    pub motivation: Option<String>,
-    #[serde(default)]
-    pub skills: Option<String>,
-    #[serde(default)]
-    pub contact_email: Option<String>,
 }
 
 /// Core competition document in `competitions` collection.
@@ -131,12 +125,6 @@ pub struct CreateCompetitionRequest {
 #[derive(Debug, Deserialize)]
 pub struct RegisterCompetitionRequest {
     pub team_name: Option<String>,
-    #[serde(default)]
-    pub motivation: Option<String>,
-    #[serde(default)]
-    pub skills: Option<String>,
-    #[serde(default)]
-    pub contact_email: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -163,15 +151,6 @@ pub struct CompetitionResponse {
     pub interested_count: usize,
     pub winners: Vec<String>,
     pub created_at: DateTime<Utc>,
-    /// True when the request was made by an authenticated user who has
-    /// already registered for this competition. Lets the frontend show
-    /// "✓ Registered" instead of "Register" without an extra round-trip.
-    #[serde(default)]
-    pub is_registered_by_viewer: bool,
-    /// True when the authenticated viewer has marked themselves as
-    /// interested. Used to toggle the ☆/★ Interested label.
-    #[serde(default)]
-    pub is_interested_by_viewer: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -181,22 +160,8 @@ pub struct RejectCompetitionRequest {
 
 impl From<Competition> for CompetitionResponse {
     fn from(c: Competition) -> Self {
-        CompetitionResponse::from_competition(c, None)
-    }
-}
-
-impl CompetitionResponse {
-    /// Build a response tagged with whether `viewer_id` already registered
-    /// or marked interest. Pass `None` for unauthenticated requests.
-    pub fn from_competition(c: Competition, viewer_id: Option<&str>) -> Self {
         let count = c.registrations.len();
         let interested = c.interested_user_ids.len();
-        let registered_by_viewer = viewer_id
-            .map(|vid| c.registrations.iter().any(|r| r.user_id == vid))
-            .unwrap_or(false);
-        let interested_by_viewer = viewer_id
-            .map(|vid| c.interested_user_ids.iter().any(|u| u == vid))
-            .unwrap_or(false);
         Self {
             id: c.id,
             name: c.name,
@@ -220,8 +185,6 @@ impl CompetitionResponse {
             interested_count: interested,
             winners: c.winners,
             created_at: c.created_at,
-            is_registered_by_viewer: registered_by_viewer,
-            is_interested_by_viewer: interested_by_viewer,
         }
     }
 }
@@ -280,17 +243,11 @@ mod tests {
             user_id: "u1".into(),
             team_name: None,
             registered_at: Utc::now(),
-            motivation: None,
-            skills: None,
-            contact_email: None,
         });
         c.registrations.push(Registration {
             user_id: "u2".into(),
             team_name: Some("Team A".into()),
             registered_at: Utc::now(),
-            motivation: None,
-            skills: None,
-            contact_email: None,
         });
         let resp = CompetitionResponse::from(c);
         assert_eq!(resp.registration_count, 2);
