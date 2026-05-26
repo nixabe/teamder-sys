@@ -10,8 +10,9 @@ pub struct GroupMember {
     pub initials: String,
     #[serde(default)]
     pub color: String,
+    #[serde(with = "crate::serde_helpers::flexible_datetime")]
     pub joined_at: DateTime<Utc>,
-    #[serde(default)]
+    #[serde(default, with = "crate::serde_helpers::flexible_datetime_opt")]
     pub last_checkin: Option<DateTime<Utc>>,
     #[serde(default)]
     pub streak: u32,
@@ -24,6 +25,7 @@ pub struct StudyNote {
     pub author_name: String,
     pub title: String,
     pub body: String,
+    #[serde(with = "crate::serde_helpers::flexible_datetime")]
     pub created_at: DateTime<Utc>,
 }
 
@@ -85,7 +87,9 @@ pub struct StudyGroup {
     pub description: Option<String>,
 
     pub created_by: String,
+    #[serde(with = "crate::serde_helpers::flexible_datetime")]
     pub created_at: DateTime<Utc>,
+    #[serde(with = "crate::serde_helpers::flexible_datetime")]
     pub updated_at: DateTime<Utc>,
 }
 
