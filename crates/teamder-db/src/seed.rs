@@ -1,7 +1,7 @@
 use anyhow::Result;
 use mongodb::bson::doc;
 use teamder_core::models::{
-    competition::{Competition, CompetitionStatus},
+    competition::{Competition, CompetitionStatus, PublishStatus},
     project::{CollabMode, Project, ProjectRole, ProjectStatus},
     skill_catalog::{StoredSkillCategory, StoredSkillTag},
     study_group::StudyGroup,
@@ -291,6 +291,7 @@ async fn seed_competitions(db: &DbClient) -> Result<()> {
     c1.duration = "48 hours".into();
     c1.tags = vec!["Hackathon".into(), "Open Theme".into(), "Campus".into()];
     c1.is_featured = true;
+    c1.publish_status = PublishStatus::Published;
 
     let mut c2 = Competition::new(
         "AI Innovation Challenge",
@@ -307,6 +308,7 @@ async fn seed_competitions(db: &DbClient) -> Result<()> {
     c2.duration = "4 weeks".into();
     c2.tags = vec!["AI".into(), "Social Good".into(), "Research".into()];
     c2.is_featured = true;
+    c2.publish_status = PublishStatus::Published;
 
     let mut c3 = Competition::new(
         "Web Dev Cup 2026",
@@ -322,6 +324,7 @@ async fn seed_competitions(db: &DbClient) -> Result<()> {
     c3.deadline = Some("2026-07-01".into());
     c3.duration = "72 hours".into();
     c3.tags = vec!["Web".into(), "Full-Stack".into(), "GDSC".into()];
+    c3.publish_status = PublishStatus::Published;
 
     let col: mongodb::Collection<Competition> = db.db.collection("competitions");
     col.insert_many(vec![c1, c2, c3]).await?;
