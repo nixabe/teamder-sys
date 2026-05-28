@@ -135,14 +135,122 @@ async fn update_user(
     Ok(Json(json!({ "success": true })))
 }
 
-/// DELETE /api/v1/users/<id>  (own account or admin)
+/// Remove a user and all of the personal data tied to them. Side-effect cleanups
+/// are best-effort (logged, never aborting) so a single failing collection can't
+/// leave the account half-deleted; the user document is removed last.
+async fn cascade_delete_user(state: &AppState, user_id: &str) -> Result<(), TeamderError> {
+    // Projects the user leads — delete the project and its update feed.
+    if let Ok(led) = state.projects.list_by_lead(user_id).await {
+        for p in led {
+            if let Err(e) = state.project_updates.delete_for_project(&p.id).await {
+                tracing::warn!(project = %p.id, "failed to delete project updates: {e}");
+            }
+            if let Err(e) = state.projects.delete(&p.id).await {
+                tracing::warn!(project = %p.id, "failed to delete project: {e}");
+            }
+        }
+    }
+    // Membership in projects led by others.
+    if let Err(e) = state.projects.pull_member_everywhere(user_id).await {
+        tracing::warn!("failed to remove user from project teams: {e}");
+    }
+
+    // Study groups the user created — delete; membership elsewhere — pull.
+    if let Ok(created) = state.study_groups.list_by_creator(user_id).await {
+        for g in created {
+            if let Err(e) = state.study_groups.delete(&g.id).await {
+                tracing::warn!(group = %g.id, "failed to delete study group: {e}");
+            }
+        }
+    }
+    if let Err(e) = state.study_groups.pull_member_everywhere(user_id).await {
+        tracing::warn!("failed to remove user from study groups: {e}");
+    }
+
+    // Competition teams the user leads — delete; membership elsewhere — pull.
+    if let Ok(teams) = state.competition_teams.list_for_user(user_id).await {
+        for t in teams {
+            if t.lead_user_id == user_id {
+                if let Err(e) = state.competition_teams.delete(&t.id).await {
+                    tracing::warn!(team = %t.id, "failed to delete competition team: {e}");
+                }
+            }
+        }
+    }
+    if let Err(e) = state.competition_teams.pull_member_everywhere(user_id).await {
+        tracing::warn!("failed to remove user from competition teams: {e}");
+    }
+
+    // Standalone personal records.
+    if let Err(e) = state.invites.delete_for_user(user_id).await {
+        tracing::warn!("failed to delete invites: {e}");
+    }
+    if let Err(e) = state.join_requests.delete_for_user(user_id).await {
+        tracing::warn!("failed to delete join requests: {e}");
+    }
+    if let Err(e) = state.messages.delete_for_user(user_id).await {
+        tracing::warn!("failed to delete messages: {e}");
+    }
+    if let Err(e) = state.notifications.delete_for_user(user_id).await {
+        tracing::warn!("failed to delete notifications: {e}");
+    }
+    if let Err(e) = state.bookmarks.delete_for_user(user_id).await {
+        tracing::warn!("failed to delete bookmarks: {e}");
+    }
+    if let Err(e) = state.peer_reviews.delete_for_user(user_id).await {
+        tracing::warn!("failed to delete peer reviews: {e}");
+    }
+
+    // Uploaded files (avatar, banner, portfolio, resume, …) live under uploads/<user_id>/.
+    let dir = std::path::Path::new("uploads").join(user_id);
+    if dir.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&dir) {
+            tracing::warn!("failed to remove uploads directory: {e}");
+        }
+    }
+
+    // The account itself, last.
+    state.users.delete(user_id).await
+}
+
+/// DELETE /api/v1/users/<id>  (admin, or own account) — cascades related data.
 #[delete("/<id>")]
 async fn delete_user(id: String, auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
     if auth.0.sub != id && !auth.0.is_admin {
         return Err(TeamderError::Forbidden.into());
     }
 
-    state.users.delete(&id).await?;
+    cascade_delete_user(&**state, &id).await?;
+
+    Ok(Json(json!({ "success": true })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct DeleteAccountRequest {
+    password: String,
+}
+
+/// POST /api/v1/users/me/delete — self-service account closure.
+/// Requires the current password, then cascades all related data.
+#[post("/me/delete", data = "<req>")]
+async fn delete_account(
+    req: Json<DeleteAccountRequest>,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let user = state
+        .users
+        .find_by_id(&auth.0.sub)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+
+    let valid = bcrypt::verify(&req.password, &user.password_hash)
+        .map_err(|e| TeamderError::Internal(e.to_string()))?;
+    if !valid {
+        return Err(TeamderError::Unauthorized.into());
+    }
+
+    cascade_delete_user(&**state, &auth.0.sub).await?;
 
     Ok(Json(json!({ "success": true })))
 }
@@ -194,7 +302,7 @@ async fn complete_onboarding(auth: AuthUser, state: &State<AppState>) -> ApiResu
         name: None, role: None, department: None, year: None, location: None,
         bio: None, skills: None, skill_tags: None, work_mode: None,
         availability: None, hours_per_week: None, languages: None,
-        portfolio: None, avatar_url: None, resume_url: None,
+        portfolio: None, avatar_url: None, banner_url: None, resume_url: None,
         onboarded: Some(true),
         headline: None, notify_email: None, notify_in_app: None, is_public: None,
         social_links: None, interests: None, timezone: None, goals: None,
@@ -206,5 +314,5 @@ async fn complete_onboarding(auth: AuthUser, state: &State<AppState>) -> ApiResu
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![list_users, get_user, update_user, delete_user, me, change_password, complete_onboarding]
+    routes![list_users, get_user, update_user, delete_user, delete_account, me, change_password, complete_onboarding]
 }

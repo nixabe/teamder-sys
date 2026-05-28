@@ -66,6 +66,17 @@ impl PeerReviewRepo {
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
+    /// Delete every review written by or about the user.
+    pub async fn delete_for_user(&self, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .delete_many(doc! {
+                "$or": [{ "reviewer_id": user_id }, { "reviewee_id": user_id }]
+            })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     /// Returns true if reviewer has already reviewed reviewee on this project/study group.
     pub async fn exists_pair(
         &self,

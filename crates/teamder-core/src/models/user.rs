@@ -90,6 +90,9 @@ pub struct User {
     pub is_publisher: bool,
     #[serde(default)]
     pub avatar_url: Option<String>,
+    /// Profile cover/banner background image, shown behind the profile header.
+    #[serde(default)]
+    pub banner_url: Option<String>,
     #[serde(default)]
     pub resume_url: Option<String>,
     /// Single-use password reset token (hex). Cleared after a successful reset.
@@ -178,6 +181,7 @@ impl User {
             is_admin: false,
             is_publisher: false,
             avatar_url: None,
+            banner_url: None,
             resume_url: None,
             reset_token: None,
             reset_token_expires_at: None,
@@ -258,6 +262,7 @@ pub struct UpdateUserRequest {
     pub languages: Option<Vec<String>>,
     pub portfolio: Option<Vec<PortfolioItem>>,
     pub avatar_url: Option<Option<String>>,
+    pub banner_url: Option<Option<String>>,
     pub resume_url: Option<Option<String>>,
     pub onboarded: Option<bool>,
     pub headline: Option<Option<String>>,
@@ -300,6 +305,7 @@ pub struct UserResponse {
     pub projects_done: u32,
     pub collaborations: u32,
     pub avatar_url: Option<String>,
+    pub banner_url: Option<String>,
     pub resume_url: Option<String>,
     pub is_admin: bool,
     pub is_publisher: bool,
@@ -343,6 +349,7 @@ impl From<User> for UserResponse {
             projects_done: u.projects_done,
             collaborations: u.collaborations,
             avatar_url: u.avatar_url,
+            banner_url: u.banner_url,
             resume_url: u.resume_url,
             is_admin: u.is_admin,
             is_publisher: u.is_publisher,

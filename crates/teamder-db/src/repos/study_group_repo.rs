@@ -139,6 +139,18 @@ impl StudyGroupRepo {
         Ok(())
     }
 
+    /// Remove the user from the `members` array of every study group they belong to.
+    pub async fn pull_member_everywhere(&self, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .update_many(
+                doc! { "members.user_id": user_id },
+                doc! { "$pull": { "members": { "user_id": user_id } } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn set_status(
         &self,
         group_id: &str,

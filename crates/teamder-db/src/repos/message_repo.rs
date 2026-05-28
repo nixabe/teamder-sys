@@ -87,6 +87,17 @@ impl MessageRepo {
         Ok(result)
     }
 
+    /// Delete every message the user sent or received.
+    pub async fn delete_for_user(&self, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .delete_many(doc! {
+                "$or": [{ "from_user_id": user_id }, { "to_user_id": user_id }]
+            })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn mark_read(&self, from_user_id: &str, to_user_id: &str) -> Result<(), TeamderError> {
         self.col
             .update_many(

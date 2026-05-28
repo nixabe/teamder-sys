@@ -253,6 +253,18 @@ impl ProjectRepo {
         Ok(())
     }
 
+    /// Remove the user from the `team` array of every project they belong to.
+    pub async fn pull_member_everywhere(&self, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .update_many(
+                doc! { "team.user_id": user_id },
+                doc! { "$pull": { "team": { "user_id": user_id } } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     /// Toggle the is_promoted flag (admin or owner action).
     pub async fn set_promoted(&self, id: &str, value: bool) -> Result<(), TeamderError> {
         self.col

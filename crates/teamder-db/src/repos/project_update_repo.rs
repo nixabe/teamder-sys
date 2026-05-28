@@ -42,4 +42,11 @@ impl ProjectUpdateRepo {
             .await.map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
+
+    /// Delete all updates belonging to a project (used when a project is removed).
+    pub async fn delete_for_project(&self, project_id: &str) -> Result<(), TeamderError> {
+        self.col.delete_many(doc! { "project_id": project_id })
+            .await.map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
 }

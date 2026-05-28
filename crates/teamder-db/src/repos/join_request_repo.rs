@@ -64,6 +64,17 @@ impl JoinRequestRepo {
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
+    /// Delete every join request the user sent or owns (received as an entity owner).
+    pub async fn delete_for_user(&self, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .delete_many(doc! {
+                "$or": [{ "from_user_id": user_id }, { "owner_id": user_id }]
+            })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn update_status(&self, id: &str, status: &JoinRequestStatus) -> Result<(), TeamderError> {
         let status_bson = mongodb::bson::to_bson(status)
             .map_err(|e| TeamderError::Internal(e.to_string()))?;

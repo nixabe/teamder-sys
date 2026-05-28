@@ -44,4 +44,11 @@ impl BookmarkRepo {
         }).await.map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
+
+    /// Delete all of a user's bookmarks.
+    pub async fn delete_for_user(&self, user_id: &str) -> Result<(), TeamderError> {
+        self.col.delete_many(doc! { "user_id": user_id })
+            .await.map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
 }

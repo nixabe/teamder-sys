@@ -96,4 +96,16 @@ impl CompetitionTeamRepo {
             .await.map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())
     }
+
+    /// Remove the user from the `members` array of every team they belong to.
+    pub async fn pull_member_everywhere(&self, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .update_many(
+                doc! { "members.user_id": user_id },
+                doc! { "$pull": { "members": { "user_id": user_id } }, "$set": { "updated_at": Utc::now().to_rfc3339() } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
 }

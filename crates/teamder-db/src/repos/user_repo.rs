@@ -176,6 +176,13 @@ impl UserRepo {
                 None => update_doc.insert("avatar_url", mongodb::bson::Bson::Null),
             };
         }
+        // banner_url uses double-Option: outer = "should we touch it", inner = value (None → null).
+        if let Some(inner) = &req.banner_url {
+            match inner {
+                Some(url) => update_doc.insert("banner_url", url.clone()),
+                None => update_doc.insert("banner_url", mongodb::bson::Bson::Null),
+            };
+        }
         // resume_url uses double-Option: outer = "should we touch it", inner = value (None → null).
         if let Some(inner) = &req.resume_url {
             match inner {
