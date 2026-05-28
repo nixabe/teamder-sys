@@ -190,6 +190,13 @@ impl UserRepo {
                 None => update_doc.insert("resume_url", mongodb::bson::Bson::Null),
             };
         }
+        // banner_url uses double-Option: outer = "should we touch it", inner = value (None → null).
+        if let Some(inner) = &req.banner_url {
+            match inner {
+                Some(url) => update_doc.insert("banner_url", url.clone()),
+                None => update_doc.insert("banner_url", mongodb::bson::Bson::Null),
+            };
+        }
         if let Some(v) = &req.onboarded {
             update_doc.insert("onboarded", *v);
         }
@@ -267,6 +274,21 @@ impl UserRepo {
         };
         let filter = doc! { "_id": id };
         let update = doc! { "$set": { "resume_url": value, "updated_at": Utc::now().to_rfc3339() } };
+        self.col
+            .update_one(filter, update)
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Set just the banner_url field (used by the uploads route after saving a banner image).
+    pub async fn set_banner_url(&self, id: &str, url: Option<String>) -> Result<(), TeamderError> {
+        let value = match url {
+            Some(u) => mongodb::bson::Bson::String(u),
+            None => mongodb::bson::Bson::Null,
+        };
+        let filter = doc! { "_id": id };
+        let update = doc! { "$set": { "banner_url": value, "updated_at": Utc::now().to_rfc3339() } };
         self.col
             .update_one(filter, update)
             .await

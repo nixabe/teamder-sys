@@ -149,8 +149,10 @@ async fn upload_resume(
 async fn upload_banner(
     mut form: Form<FileUpload<'_>>,
     auth: AuthUser,
+    state: &State<AppState>,
 ) -> ApiResult<Value> {
     let (filename, url) = persist(&mut form.file, &auth.0.sub, "banners").await?;
+    state.users.set_banner_url(&auth.0.sub, Some(url.clone())).await?;
     Ok(Json(json!({ "url": url, "filename": filename })))
 }
 

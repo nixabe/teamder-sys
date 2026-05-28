@@ -95,6 +95,8 @@ pub struct User {
     pub banner_url: Option<String>,
     #[serde(default)]
     pub resume_url: Option<String>,
+    #[serde(default)]
+    pub banner_url: Option<String>,
     /// Single-use password reset token (hex). Cleared after a successful reset.
     #[serde(default)]
     pub reset_token: Option<String>,
@@ -183,6 +185,7 @@ impl User {
             avatar_url: None,
             banner_url: None,
             resume_url: None,
+            banner_url: None,
             reset_token: None,
             reset_token_expires_at: None,
             onboarded: false,
@@ -264,6 +267,7 @@ pub struct UpdateUserRequest {
     pub avatar_url: Option<Option<String>>,
     pub banner_url: Option<Option<String>>,
     pub resume_url: Option<Option<String>>,
+    pub banner_url: Option<Option<String>>,
     pub onboarded: Option<bool>,
     pub headline: Option<Option<String>>,
     pub notify_email: Option<bool>,
@@ -307,6 +311,7 @@ pub struct UserResponse {
     pub avatar_url: Option<String>,
     pub banner_url: Option<String>,
     pub resume_url: Option<String>,
+    pub banner_url: Option<String>,
     pub is_admin: bool,
     pub is_publisher: bool,
     pub onboarded: bool,
@@ -351,6 +356,7 @@ impl From<User> for UserResponse {
             avatar_url: u.avatar_url,
             banner_url: u.banner_url,
             resume_url: u.resume_url,
+            banner_url: u.banner_url,
             is_admin: u.is_admin,
             is_publisher: u.is_publisher,
             onboarded: u.onboarded,
