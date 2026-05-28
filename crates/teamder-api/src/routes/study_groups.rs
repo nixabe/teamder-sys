@@ -25,39 +25,42 @@ struct UpdateStudyGroupRequest {
     banner_image: Option<String>,
 }
 
-/// GET /api/v1/study-groups?limit=20&skip=0&open=true
-#[get("/?<limit>&<skip>&<open>")]
+/// GET /api/v1/study-groups?limit=20&skip=0&page=1&is_open=true&subject=Frontend&search=rust
+#[get("/?<limit>&<skip>&<page>&<open>&<is_open>&<subject>&<search>")]
 async fn list_groups(
     limit: Option<i64>,
     skip: Option<u64>,
+    page: Option<u64>,
     open: Option<bool>,
+    is_open: Option<bool>,
+    subject: Option<String>,
+    search: Option<String>,
     state: &State<AppState>,
 ) -> ApiResult<Value> {
     let limit = limit.unwrap_or(20).min(100);
-    let skip = skip.unwrap_or(0);
-
-    let groups: Vec<StudyGroupResponse> = if open.unwrap_or(false) {
-        state
-            .study_groups
-            .list_open()
-            .await?
-            .into_iter()
-            .map(StudyGroupResponse::from)
-            .collect()
+    let effective_open = is_open.or(open);
+    let skip = if let Some(p) = page {
+        skip.unwrap_or(0).max((p.saturating_sub(1)) * limit as u64)
     } else {
-        state
-            .study_groups
-            .list(limit, skip)
-            .await?
-            .into_iter()
-            .map(StudyGroupResponse::from)
-            .collect()
+        skip.unwrap_or(0)
     };
 
-    let total = state.study_groups.count().await?;
+    let subject_ref = subject.as_deref();
+    let search_ref = search.as_deref();
+
+    let groups: Vec<StudyGroupResponse> = state
+        .study_groups
+        .list_filtered(limit, skip, effective_open, subject_ref, search_ref)
+        .await?
+        .into_iter()
+        .map(StudyGroupResponse::from)
+        .collect();
+
+    let total = state.study_groups.count_filtered(effective_open, subject_ref, search_ref).await?;
 
     Ok(Json(json!({
         "data": groups,
+        "total": total,
         "meta": { "total": total, "limit": limit, "skip": skip }
     })))
 }

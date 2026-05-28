@@ -57,6 +57,56 @@ impl StudyGroupRepo {
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
+    pub async fn list_filtered(
+        &self,
+        limit: i64,
+        skip: u64,
+        is_open: Option<bool>,
+        subject: Option<&str>,
+        search: Option<&str>,
+    ) -> Result<Vec<StudyGroup>, TeamderError> {
+        use mongodb::options::FindOptions;
+        let mut filter = doc! {};
+        if let Some(open) = is_open { filter.insert("is_open", open); }
+        if let Some(s) = subject { filter.insert("subject", s); }
+        if let Some(q) = search {
+            let re = mongodb::bson::Regex { pattern: q.to_string(), options: "i".to_string() };
+            filter.insert("$or", mongodb::bson::bson!([
+                { "name": { "$regex": re.clone() } },
+                { "goal": { "$regex": re } },
+            ]));
+        }
+        let opts = FindOptions::builder()
+            .limit(limit)
+            .skip(skip)
+            .sort(doc! { "created_at": -1 })
+            .build();
+        let cursor = self.col.find(filter).with_options(opts).await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor.try_collect().await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    pub async fn count_filtered(
+        &self,
+        is_open: Option<bool>,
+        subject: Option<&str>,
+        search: Option<&str>,
+    ) -> Result<u64, TeamderError> {
+        let mut filter = doc! {};
+        if let Some(open) = is_open { filter.insert("is_open", open); }
+        if let Some(s) = subject { filter.insert("subject", s); }
+        if let Some(q) = search {
+            let re = mongodb::bson::Regex { pattern: q.to_string(), options: "i".to_string() };
+            filter.insert("$or", mongodb::bson::bson!([
+                { "name": { "$regex": re.clone() } },
+                { "goal": { "$regex": re } },
+            ]));
+        }
+        self.col.count_documents(filter).await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
     pub async fn add_member(
         &self,
         group_id: &str,
