@@ -124,6 +124,19 @@ async fn create_group(
     if req.banner_image.is_some() { group.banner_image = req.banner_image.clone(); }
     if req.description.is_some() { group.description = req.description.clone(); }
 
+    // Fetch creator info so they appear in the members list and can check in
+    let creator = state.users.find_by_id(&auth.0.sub).await?
+        .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+    let creator_member = GroupMember {
+        user_id: auth.0.sub.clone(),
+        initials: creator.initials,
+        color: "#4F6D7A".into(),
+        joined_at: Utc::now(),
+        last_checkin: None,
+        streak: 0,
+    };
+    group.members.push(creator_member);
+
     state.study_groups.create(&group).await?;
     Ok(Json(group.into()))
 }
