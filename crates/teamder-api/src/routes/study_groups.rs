@@ -184,6 +184,25 @@ async fn checkin(id: String, auth: AuthUser, state: &State<AppState>) -> ApiResu
     let g = state.study_groups.find_by_id(&id).await?
         .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
 
+    // If the user is the group creator but was never added to members (legacy groups),
+    // auto-add them now so they can check in.
+    if g.created_by == auth.0.sub && !g.members.iter().any(|m| m.user_id == auth.0.sub) {
+        let creator = state.users.find_by_id(&auth.0.sub).await?
+            .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+        let creator_member = GroupMember {
+            user_id: auth.0.sub.clone(),
+            initials: creator.initials,
+            color: "#4F6D7A".into(),
+            joined_at: Utc::now(),
+            last_checkin: None,
+            streak: 0,
+        };
+        state.study_groups.add_member(&id, &creator_member).await?;
+    }
+
+    let g = state.study_groups.find_by_id(&id).await?
+        .ok_or_else(|| TeamderError::NotFound(format!("Study group {} not found", id)))?;
+
     let member = g.members.iter().find(|m| m.user_id == auth.0.sub)
         .ok_or_else(|| TeamderError::Forbidden)?;
 
