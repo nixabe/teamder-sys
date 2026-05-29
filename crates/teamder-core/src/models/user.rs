@@ -1,6 +1,18 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
+
+/// Deserializer for `Option<Option<T>>` so that:
+/// - missing key  → `None`           (don't touch the field)
+/// - JSON `null`  → `Some(None)`     (clear the field)
+/// - JSON value   → `Some(Some(v))`  (set the field)
+fn deserialize_optional_nullable<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Some(Option::<T>::deserialize(d)?))
+}
 
 /// Collaboration work mode preference.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -261,17 +273,23 @@ pub struct UpdateUserRequest {
     pub hours_per_week: Option<String>,
     pub languages: Option<Vec<String>>,
     pub portfolio: Option<Vec<PortfolioItem>>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub avatar_url: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub banner_url: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub resume_url: Option<Option<String>>,
     pub onboarded: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub headline: Option<Option<String>>,
     pub notify_email: Option<bool>,
     pub notify_in_app: Option<bool>,
     pub is_public: Option<bool>,
     pub social_links: Option<Vec<SocialLink>>,
     pub interests: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub timezone: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub goals: Option<Option<String>>,
     /// Days of the week the user is generally available.
     #[serde(default)]
