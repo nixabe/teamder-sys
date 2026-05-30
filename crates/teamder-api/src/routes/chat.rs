@@ -11,7 +11,7 @@ use crate::{
     state::AppState,
 };
 
-fn build_msg_response(msg: &Message, from_user_name: &str) -> MessageResponse {
+pub fn build_msg_response(msg: &Message, from_user_name: &str) -> MessageResponse {
     MessageResponse {
         id: msg.id.clone(),
         from_user_id: msg.from_user_id.clone(),
@@ -20,6 +20,7 @@ fn build_msg_response(msg: &Message, from_user_name: &str) -> MessageResponse {
         content: msg.content.clone(),
         created_at: msg.created_at,
         read: msg.read,
+        kind: msg.kind.clone(),
     }
 }
 
@@ -60,6 +61,14 @@ pub async fn message_history(
         )
         .await?;
     let _ = state.messages.mark_read(&partner_id, &user.0.sub).await;
+
+    // Notify the partner that their messages were read
+    if let Ok(receipt) = serde_json::to_string(&serde_json::json!({
+        "type": "read_receipt",
+        "by": user.0.sub
+    })) {
+        state.chat.send_to(&partner_id, receipt).await;
+    }
 
     // Batch-fetch the two participants' names
     let user_ids: Vec<&str> = [user.0.sub.as_str(), partner_id.as_str()].into();

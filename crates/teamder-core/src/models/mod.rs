@@ -1,4 +1,5 @@
 pub mod user;
+pub mod contact_exchange;
 pub mod project;
 pub mod competition;
 pub mod study_group;

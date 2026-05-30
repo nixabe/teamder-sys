@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+fn default_kind() -> String { "text".to_string() }
+
 /// Stored in the `messages` collection. Only IDs — names resolved at API layer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -12,6 +14,9 @@ pub struct Message {
     pub content: String,
     pub created_at: DateTime<Utc>,
     pub read: bool,
+    /// "text" | "contact_request" | "contact_accepted" | "contact_declined"
+    #[serde(default = "default_kind")]
+    pub kind: String,
 }
 
 impl Message {
@@ -27,7 +32,19 @@ impl Message {
             content: content.into(),
             created_at: Utc::now(),
             read: false,
+            kind: "text".to_string(),
         }
+    }
+
+    pub fn system(
+        from_user_id: impl Into<String>,
+        to_user_id: impl Into<String>,
+        content: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        let mut m = Self::new(from_user_id, to_user_id, content);
+        m.kind = kind.into();
+        m
     }
 }
 
@@ -41,6 +58,8 @@ pub struct MessageResponse {
     pub content: String,
     pub created_at: DateTime<Utc>,
     pub read: bool,
+    #[serde(default = "default_kind")]
+    pub kind: String,
 }
 
 /// Conversation summary — partner_name resolved at API layer.

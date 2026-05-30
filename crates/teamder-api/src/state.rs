@@ -4,9 +4,9 @@ use chrono::{DateTime, Utc};
 use teamder_db::{
     DbClient,
     repos::{
-        BookmarkRepo, CompetitionRepo, CompetitionTeamRepo, InviteRepo, JoinRequestRepo,
-        MessageRepo, NotificationRepo, PeerReviewRepo, ProjectRepo, ProjectUpdateRepo,
-        SkillCatalogRepo, StudyGroupRepo, UserRepo,
+        BookmarkRepo, CompetitionRepo, CompetitionTeamRepo, ContactExchangeRepo, InviteRepo,
+        JoinRequestRepo, MessageRepo, NotificationRepo, PeerReviewRepo, ProjectRepo,
+        ProjectUpdateRepo, SkillCatalogRepo, StudyGroupRepo, UserRepo,
     },
 };
 
@@ -21,6 +21,7 @@ pub struct AppState {
     pub invites: InviteRepo,
     pub messages: MessageRepo,
     pub join_requests: JoinRequestRepo,
+    pub contact_exchanges: ContactExchangeRepo,
     pub peer_reviews: PeerReviewRepo,
     pub notifications: NotificationRepo,
     pub competition_teams: CompetitionTeamRepo,
@@ -49,6 +50,7 @@ impl AppState {
             invites: InviteRepo::new(&db),
             messages: MessageRepo::new(&db),
             join_requests: JoinRequestRepo::new(&db),
+            contact_exchanges: ContactExchangeRepo::new(&db),
             peer_reviews: PeerReviewRepo::new(&db),
             notifications: NotificationRepo::new(&db),
             competition_teams: CompetitionTeamRepo::new(&db),
