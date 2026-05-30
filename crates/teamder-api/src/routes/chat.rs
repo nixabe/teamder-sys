@@ -102,6 +102,7 @@ pub async fn chat_ws(
 
     let msg_repo = state.messages.clone();
     let chat = state.chat.clone();
+    let notif_hub = state.notif_hub.clone();
 
     let mut rx = chat.subscribe(&user_id).await;
 
@@ -121,6 +122,16 @@ pub async fn chat_ws(
                         if let Ok(json) = serde_json::to_string(&resp) {
                             chat.send_to(&incoming.to_user_id, json.clone()).await;
                             chat.send_to(&user_id, json).await;
+                        }
+                        // Push a notification to the recipient's bell
+                        let preview: String = incoming.content.chars().take(60).collect();
+                        if let Ok(payload) = serde_json::to_string(&serde_json::json!({
+                            "kind": "message",
+                            "title": user_name,
+                            "body": preview,
+                            "link": "/messages"
+                        })) {
+                            notif_hub.send_to(&incoming.to_user_id, payload).await;
                         }
                     }
                     result = rx.recv() => {
@@ -163,6 +174,15 @@ pub async fn send_message(
     if let Ok(json) = serde_json::to_string(&resp) {
         state.chat.send_to(&body.to_user_id, json.clone()).await;
         state.chat.send_to(&user.0.sub, json).await;
+    }
+    let preview: String = body.content.chars().take(60).collect();
+    if let Ok(payload) = serde_json::to_string(&serde_json::json!({
+        "kind": "message",
+        "title": user_name,
+        "body": preview,
+        "link": "/messages"
+    })) {
+        state.notif_hub.send_to(&body.to_user_id, payload).await;
     }
 
     Ok(Json(resp))
