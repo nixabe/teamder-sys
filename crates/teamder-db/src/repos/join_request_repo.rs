@@ -64,6 +64,33 @@ impl JoinRequestRepo {
             .map_err(|e| TeamderError::Database(e.to_string()))
     }
 
+    /// All requests (any status) for a given entity — for the owner to review history.
+    pub async fn list_all_for_entity(&self, entity_id: &str) -> Result<Vec<JoinRequest>, TeamderError> {
+        let cursor = self.col
+            .find(doc! { "entity_id": entity_id })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        cursor.try_collect().await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
+    /// Most recent request the given user sent to a specific entity.
+    pub async fn find_by_user_entity(
+        &self,
+        user_id: &str,
+        entity_type: &str,
+        entity_id: &str,
+    ) -> Result<Option<JoinRequest>, TeamderError> {
+        self.col
+            .find_one(doc! {
+                "from_user_id": user_id,
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+            })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))
+    }
+
     /// Delete every join request the user sent or owns (received as an entity owner).
     pub async fn delete_for_user(&self, user_id: &str) -> Result<(), TeamderError> {
         self.col

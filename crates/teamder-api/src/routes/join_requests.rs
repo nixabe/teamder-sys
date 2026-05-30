@@ -42,8 +42,8 @@ fn enrich(req: JoinRequest, from_user_name: String) -> JoinRequestResponse {
 
 /// POST /api/v1/join-requests  (auth)
 /// Body: { entity_type: "project"|"study_group", entity_id, message? }
-/// If join_mode == Direct → joins immediately and returns { joined: true }
-/// If join_mode == Approval → creates pending request
+/// If join_mode == Direct → joins immediately, saves an accepted record, returns { joined: true }
+/// If join_mode == Approval → creates pending request, returns { joined: false }
 #[post("/", data = "<body>")]
 async fn create_request(
     body: Json<CreateJoinRequestBody>,
@@ -66,8 +66,36 @@ async fn create_request(
 
             match project.join_mode {
                 JoinMode::Direct => {
+                    if state.join_requests.exists_for_user(user_id, &body.entity_id).await? {
+                        return Err(TeamderError::Conflict("You already applied".into()).into());
+                    }
                     let user = state.users.find_by_id(user_id).await?
                         .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+
+                    // Save an accepted record so the owner can review it later.
+                    let mut req = JoinRequest::new(
+                        user_id,
+                        "project",
+                        &body.entity_id,
+                        &project.name,
+                        &project.lead_user_id,
+                        body.message.clone(),
+                    );
+                    req.status = JoinRequestStatus::Accepted;
+                    req.motivation = body.motivation.clone();
+                    req.role_wanted = body.role_wanted.clone();
+                    req.hours_per_week = body.hours_per_week.clone();
+                    req.portfolio_url = body.portfolio_url.clone();
+                    req.relevant_experience = body.relevant_experience.clone();
+                    req.availability_start = body.availability_start.clone();
+                    req.can_meet_in_person = body.can_meet_in_person;
+                    req.additional_links = body.additional_links.clone();
+                    req.comm_channels = body.comm_channels.clone();
+                    req.timezone = body.timezone.clone();
+                    req.agreed_to_coc = body.agreed_to_coc;
+                    req.skill_confidence = body.skill_confidence.clone();
+                    state.join_requests.create(&req).await?;
+
                     let member = TeamMember {
                         user_id: user_id.clone(),
                         initials: user.initials,
@@ -141,8 +169,25 @@ async fn create_request(
 
             match group.join_mode {
                 JoinMode::Direct => {
+                    if state.join_requests.exists_for_user(user_id, &body.entity_id).await? {
+                        return Err(TeamderError::Conflict("You already applied".into()).into());
+                    }
                     let user = state.users.find_by_id(user_id).await?
                         .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+
+                    // Save an accepted record for history.
+                    let mut req = JoinRequest::new(
+                        user_id,
+                        "study_group",
+                        &body.entity_id,
+                        &group.name,
+                        &group.created_by,
+                        body.message.clone(),
+                    );
+                    req.status = JoinRequestStatus::Accepted;
+                    req.motivation = body.motivation.clone();
+                    state.join_requests.create(&req).await?;
+
                     let member = GroupMember {
                         user_id: user_id.clone(),
                         initials: user.initials,
@@ -208,6 +253,70 @@ async fn sent(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
     Ok(Json(json!({ "data": data })))
 }
 
+/// GET /api/v1/join-requests/for-entity/<entity_id>  (auth — must be owner or admin)
+/// Returns all join requests (any status) for a given project or study group.
+#[get("/for-entity/<entity_id>")]
+async fn for_entity(
+    entity_id: String,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let user_id = &auth.0.sub;
+
+    // Verify the caller owns this entity (or is admin).
+    let is_project_owner = state.projects.find_by_id(&entity_id).await?
+        .map(|p| p.lead_user_id == *user_id)
+        .unwrap_or(false);
+    let is_group_owner = if !is_project_owner {
+        state.study_groups.find_by_id(&entity_id).await?
+            .map(|g| g.created_by == *user_id)
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    if !is_project_owner && !is_group_owner && !auth.0.is_admin {
+        return Err(TeamderError::Forbidden.into());
+    }
+
+    let requests = state.join_requests.list_all_for_entity(&entity_id).await?;
+    let user_ids: Vec<&str> = {
+        let mut ids: Vec<&str> = requests.iter().map(|r| r.from_user_id.as_str()).collect();
+        ids.sort_unstable(); ids.dedup(); ids
+    };
+    let users = state.users.find_many_by_ids(&user_ids).await?;
+    use std::collections::HashMap;
+    let names: HashMap<&str, &str> = users.iter().map(|u| (u.id.as_str(), u.name.as_str())).collect();
+    let data: Vec<JoinRequestResponse> = requests.into_iter().map(|r| {
+        let name = names.get(r.from_user_id.as_str()).copied().unwrap_or("").to_string();
+        enrich(r, name)
+    }).collect();
+    Ok(Json(json!({ "data": data })))
+}
+
+/// GET /api/v1/join-requests/my-status?entity_type=<type>&entity_id=<id>  (auth)
+/// Returns the current user's most recent join request for the given entity, if any.
+#[get("/my-status?<entity_type>&<entity_id>")]
+async fn my_status(
+    entity_type: String,
+    entity_id: String,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let user_id = &auth.0.sub;
+    let req = state.join_requests
+        .find_by_user_entity(user_id, &entity_type, &entity_id)
+        .await?;
+    match req {
+        Some(r) => {
+            let user = state.users.find_by_id(user_id).await?;
+            let name = user.map(|u| u.name).unwrap_or_default();
+            Ok(Json(json!({ "found": true, "request": enrich(r, name) })))
+        }
+        None => Ok(Json(json!({ "found": false, "request": null }))),
+    }
+}
+
 /// POST /api/v1/join-requests/<id>/respond  (auth — must be owner)
 /// Body: { accept: bool }
 #[post("/<id>/respond", data = "<body>")]
@@ -253,7 +362,6 @@ async fn respond(
     let _ = state.notifications.create(&n).await;
 
     if body.accept {
-        // Add member to the appropriate entity
         let user = state.users.find_by_id(&req.from_user_id).await?
             .ok_or_else(|| TeamderError::NotFound("Applicant not found".into()))?;
 
@@ -294,5 +402,5 @@ async fn respond(
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![create_request, incoming, sent, respond]
+    routes![create_request, incoming, sent, for_entity, my_status, respond]
 }
