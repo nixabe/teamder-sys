@@ -104,6 +104,25 @@ async fn promote_user(
     Ok(Json(json!({ "success": true, "is_admin": val })))
 }
 
+/// POST /api/v1/admin/users/<id>/ban  (admin only)
+/// `{ "value": bool, "reason"?: string }` — bans or unbans a user account.
+#[post("/users/<id>/ban", data = "<req>")]
+async fn ban_user(
+    id: String,
+    req: Json<Value>,
+    _admin: AdminUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let value = req.0.get("value").and_then(|v| v.as_bool()).unwrap_or(true);
+    let reason = req
+        .0
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    state.users.set_banned(&id, value, reason).await?;
+    Ok(Json(json!({ "success": true, "is_banned": value })))
+}
+
 /// GET /api/v1/admin/competitions  (admin only — all competitions regardless of publish status)
 #[get("/competitions")]
 async fn list_all_competitions(_admin: AdminUser, state: &State<AppState>) -> ApiResult<Value> {
@@ -249,5 +268,5 @@ async fn export_users_csv(_admin: AdminUser, state: &State<AppState>) -> Result<
 fn _silence(_: TeamderError) {}
 
 pub fn routes() -> Vec<Route> {
-    routes![stats, list_users, list_projects, list_all_competitions, promote_project, promote_user, timeseries, export_users_csv]
+    routes![stats, list_users, list_projects, list_all_competitions, promote_project, promote_user, ban_user, timeseries, export_users_csv]
 }

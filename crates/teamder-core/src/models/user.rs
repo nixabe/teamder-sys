@@ -143,6 +143,15 @@ pub struct User {
     /// Days of the week the user is generally available (e.g. ["Mon","Wed","Fri"]).
     #[serde(default)]
     pub free_days: Vec<String>,
+    /// Whether the account has been suspended by an admin.
+    #[serde(default)]
+    pub is_banned: bool,
+    /// Optional admin-supplied reason for the ban.
+    #[serde(default)]
+    pub banned_reason: Option<String>,
+    /// When the ban was applied (cleared when unbanned).
+    #[serde(default)]
+    pub banned_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -207,6 +216,9 @@ impl User {
             timezone: None,
             goals: None,
             free_days: vec![],
+            is_banned: false,
+            banned_reason: None,
+            banned_at: None,
             created_at: now,
             updated_at: now,
         }
@@ -337,6 +349,9 @@ pub struct UserResponse {
     pub timezone: Option<String>,
     pub goals: Option<String>,
     pub free_days: Vec<String>,
+    pub is_banned: bool,
+    pub banned_reason: Option<String>,
+    pub banned_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -381,6 +396,9 @@ impl From<User> for UserResponse {
             timezone: u.timezone,
             goals: u.goals,
             free_days: u.free_days,
+            is_banned: u.is_banned,
+            banned_reason: u.banned_reason,
+            banned_at: u.banned_at,
             created_at: u.created_at,
         }
     }

@@ -23,6 +23,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for ApiError {
             TeamderError::NotFound(_) => (Status::NotFound, "not_found"),
             TeamderError::Unauthorized => (Status::Unauthorized, "unauthorized"),
             TeamderError::Forbidden => (Status::Forbidden, "forbidden"),
+            TeamderError::Suspended(_) => (Status::Forbidden, "suspended"),
             TeamderError::Validation(_) => (Status::UnprocessableEntity, "validation_error"),
             TeamderError::Conflict(_) => (Status::Conflict, "conflict"),
             TeamderError::Database(_) | TeamderError::Internal(_) => {

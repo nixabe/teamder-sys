@@ -121,6 +121,10 @@ async fn login(req: Json<LoginRequest>, state: &State<AppState>) -> ApiResult<Au
         return Err(TeamderError::Unauthorized.into());
     }
 
+    if user.is_banned {
+        return Err(TeamderError::Suspended("Your account has been suspended.".into()).into());
+    }
+
     let token = auth::create_token(&user.id, &user.email, user.is_admin, user.is_publisher, &state.jwt_secret)?;
 
     Ok(Json(AuthResponse {

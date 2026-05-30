@@ -33,6 +33,15 @@ pub struct Report {
     pub reason: String,
     pub details: Option<String>,
     pub status: ReportStatus,
+    /// Admin user id who last reviewed this report.
+    #[serde(default)]
+    pub reviewed_by: Option<String>,
+    /// When the report was last reviewed.
+    #[serde(default)]
+    pub reviewed_at: Option<DateTime<Utc>>,
+    /// Free-form moderation notes left by the reviewing admin.
+    #[serde(default)]
+    pub admin_notes: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -52,6 +61,9 @@ impl Report {
             reason: reason.into(),
             details,
             status: ReportStatus::Pending,
+            reviewed_by: None,
+            reviewed_at: None,
+            admin_notes: None,
             created_at: Utc::now(),
         }
     }
@@ -74,6 +86,9 @@ pub struct ReportResponse {
     pub reason: String,
     pub details: Option<String>,
     pub status: ReportStatus,
+    pub reviewed_by: Option<String>,
+    pub reviewed_at: Option<DateTime<Utc>>,
+    pub admin_notes: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -87,6 +102,9 @@ impl From<Report> for ReportResponse {
             reason: r.reason,
             details: r.details,
             status: r.status,
+            reviewed_by: r.reviewed_by,
+            reviewed_at: r.reviewed_at,
+            admin_notes: r.admin_notes,
             created_at: r.created_at,
         }
     }

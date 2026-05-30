@@ -11,6 +11,9 @@ pub enum TeamderError {
     #[error("Forbidden")]
     Forbidden,
 
+    #[error("{0}")]
+    Suspended(String),
+
     #[error("Validation error: {0}")]
     Validation(String),
 

@@ -440,6 +440,39 @@ impl UserRepo {
         Ok(())
     }
 
+    /// Ban or unban a user. When `value` is true, sets `is_banned`, stamps
+    /// `banned_at` to now and records `banned_reason`; when false, clears all three.
+    pub async fn set_banned(
+        &self,
+        id: &str,
+        value: bool,
+        reason: Option<String>,
+    ) -> Result<(), TeamderError> {
+        let set_doc = if value {
+            doc! {
+                "is_banned": true,
+                "banned_at": Utc::now().to_rfc3339(),
+                "banned_reason": match reason {
+                    Some(r) => mongodb::bson::Bson::String(r),
+                    None => mongodb::bson::Bson::Null,
+                },
+                "updated_at": Utc::now().to_rfc3339(),
+            }
+        } else {
+            doc! {
+                "is_banned": false,
+                "banned_at": mongodb::bson::Bson::Null,
+                "banned_reason": mongodb::bson::Bson::Null,
+                "updated_at": Utc::now().to_rfc3339(),
+            }
+        };
+        self.col
+            .update_one(doc! { "_id": id }, doc! { "$set": set_doc })
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn count(&self) -> Result<u64, TeamderError> {
         self.col
             .count_documents(doc! {})

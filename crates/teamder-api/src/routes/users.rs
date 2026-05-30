@@ -263,6 +263,9 @@ async fn me(auth: AuthUser, state: &State<AppState>) -> ApiResult<UserResponse> 
         .find_by_id(&auth.0.sub)
         .await?
         .ok_or_else(|| TeamderError::NotFound("Current user not found".into()))?;
+    if user.is_banned {
+        return Err(TeamderError::Suspended("Your account has been suspended.".into()).into());
+    }
     Ok(Json(user.into()))
 }
 
