@@ -61,6 +61,8 @@ pub struct StudyGroup {
     pub notes: Vec<StudyNote>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub admins: Vec<String>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -92,6 +94,7 @@ impl StudyGroup {
             banner_image: None,
             notes: vec![],
             description: None,
+            admins: vec![],
             created_by: created_by.into(),
             created_at: now,
             updated_at: now,
@@ -161,6 +164,7 @@ pub struct StudyGroupDetail {
     pub banner_image: Option<String>,
     pub notes: Vec<StudyNote>,
     pub description: Option<String>,
+    pub admins: Vec<String>,
     pub created_by: String,
     pub creator_name: String,
     pub created_at: DateTime<Utc>,
@@ -187,6 +191,7 @@ pub struct StudyGroupResponse {
     pub join_mode: JoinMode,
     pub banner_image: Option<String>,
     pub description: Option<String>,
+    pub admins: Vec<String>,
     pub created_by: String,
     pub created_at: DateTime<Utc>,
 }
@@ -215,6 +220,7 @@ impl From<StudyGroup> for StudyGroupResponse {
             join_mode: g.join_mode,
             banner_image: g.banner_image,
             description: g.description,
+            admins: g.admins,
             created_by: g.created_by,
             created_at: g.created_at,
         }

@@ -7,6 +7,8 @@ pub mod invites;
 pub mod join_requests;
 pub mod projects;
 pub mod study_groups;
+pub mod study_group_announcements;
+pub mod study_group_events;
 pub mod uploads;
 pub mod users;
 pub mod peer_reviews;

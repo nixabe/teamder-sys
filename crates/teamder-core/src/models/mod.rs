@@ -3,6 +3,8 @@ pub mod contact_exchange;
 pub mod project;
 pub mod competition;
 pub mod study_group;
+pub mod study_group_announcement;
+pub mod study_group_event;
 pub mod invite;
 pub mod message;
 pub mod join_request;

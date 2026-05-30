@@ -246,6 +246,28 @@ impl StudyGroupRepo {
         Ok(())
     }
 
+    pub async fn add_admin(&self, group_id: &str, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": group_id },
+                doc! { "$addToSet": { "admins": user_id } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn remove_admin(&self, group_id: &str, user_id: &str) -> Result<(), TeamderError> {
+        self.col
+            .update_one(
+                doc! { "_id": group_id },
+                doc! { "$pull": { "admins": user_id } },
+            )
+            .await
+            .map_err(|e| TeamderError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     pub async fn delete(&self, id: &str) -> Result<(), TeamderError> {
         self.col
             .delete_one(doc! { "_id": id })

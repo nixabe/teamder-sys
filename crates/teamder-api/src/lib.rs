@@ -53,7 +53,12 @@ pub async fn build_rocket(db_client: DbClient, jwt_secret: String) -> rocket::Ro
             r
         })
         .mount("/api/v1/competitions", routes::competitions::routes())
-        .mount("/api/v1/study-groups", routes::study_groups::routes())
+        .mount("/api/v1/study-groups", {
+            let mut r = routes::study_groups::routes();
+            r.extend(routes::study_group_announcements::routes());
+            r.extend(routes::study_group_events::routes());
+            r
+        })
         .mount("/api/v1/invites", routes::invites::routes())
         .mount("/api/v1/join-requests", routes::join_requests::routes())
         .mount("/api/v1/chat", routes::chat::routes())

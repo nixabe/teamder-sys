@@ -99,7 +99,7 @@ async fn get_group(id: String, state: &State<AppState>) -> ApiResult<Value> {
         current_week: g.current_week, progress_percent: progress,
         is_open: g.is_open, status: g.status, join_mode: g.join_mode,
         banner_image: g.banner_image, notes: g.notes, description: g.description,
-        created_by: g.created_by, creator_name, created_at: g.created_at,
+        admins: g.admins, created_by: g.created_by, creator_name, created_at: g.created_at,
     };
 
     Ok(Json(json!(detail)))
@@ -258,7 +258,7 @@ async fn joined_groups(auth: AuthUser, state: &State<AppState>) -> ApiResult<Val
             current_week: g.current_week, progress_percent: progress,
             is_open: g.is_open, status: g.status, join_mode: g.join_mode,
             banner_image: g.banner_image, notes: g.notes, description: g.description,
-            created_by: g.created_by, creator_name, created_at: g.created_at,
+            admins: g.admins, created_by: g.created_by, creator_name, created_at: g.created_at,
         }
     }).collect();
 
@@ -495,6 +495,42 @@ async fn delete_group(
     Ok(Json(json!({ "success": true })))
 }
 
+/// POST /api/v1/study-groups/<id>/admins  (auth — creator only)
+/// Body: { user_id }
+#[derive(serde::Deserialize)]
+struct AdminBody { user_id: String }
+
+#[post("/<id>/admins", data = "<body>")]
+async fn add_admin(
+    id: String,
+    body: Json<AdminBody>,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let g = state.study_groups.find_by_id(&id).await?
+        .ok_or_else(|| TeamderError::NotFound("Group not found".into()))?;
+    if g.created_by != auth.0.sub { return Err(TeamderError::Forbidden.into()); }
+    let is_member = g.members.iter().any(|m| m.user_id == body.user_id);
+    if !is_member { return Err(TeamderError::Validation("User must be a member first".into()).into()); }
+    state.study_groups.add_admin(&id, &body.user_id).await?;
+    Ok(Json(json!({ "success": true })))
+}
+
+/// DELETE /api/v1/study-groups/<id>/admins/<user_id>  (auth — creator only)
+#[delete("/<id>/admins/<user_id>")]
+async fn remove_admin(
+    id: String,
+    user_id: String,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let g = state.study_groups.find_by_id(&id).await?
+        .ok_or_else(|| TeamderError::NotFound("Group not found".into()))?;
+    if g.created_by != auth.0.sub { return Err(TeamderError::Forbidden.into()); }
+    state.study_groups.remove_admin(&id, &user_id).await?;
+    Ok(Json(json!({ "success": true })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups, list_notes, add_note, delete_note, leave_group, update_progress, complete_group, update_group, delete_group]
+    routes![list_groups, get_group, create_group, join_group, checkin, joined_groups, list_notes, add_note, delete_note, leave_group, update_progress, complete_group, update_group, delete_group, add_admin, remove_admin]
 }

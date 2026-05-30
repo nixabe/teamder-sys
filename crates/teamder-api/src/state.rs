@@ -6,7 +6,8 @@ use teamder_db::{
     repos::{
         BookmarkRepo, CompetitionRepo, CompetitionTeamRepo, ContactExchangeRepo, InviteRepo,
         JoinRequestRepo, MessageRepo, NotificationRepo, PeerReviewRepo, ProjectRepo,
-        ProjectUpdateRepo, ReportRepo, SkillCatalogRepo, StudyGroupRepo, UserRepo,
+        ProjectUpdateRepo, ReportRepo, SkillCatalogRepo, StudyGroupRepo,
+        StudyGroupAnnouncementRepo, StudyGroupEventRepo, UserRepo,
     },
 };
 
@@ -22,6 +23,8 @@ pub struct AppState {
     pub messages: MessageRepo,
     pub join_requests: JoinRequestRepo,
     pub contact_exchanges: ContactExchangeRepo,
+    pub sg_announcements: StudyGroupAnnouncementRepo,
+    pub sg_events: StudyGroupEventRepo,
     pub peer_reviews: PeerReviewRepo,
     pub notifications: NotificationRepo,
     pub competition_teams: CompetitionTeamRepo,
@@ -53,6 +56,8 @@ impl AppState {
             messages: MessageRepo::new(&db),
             join_requests: JoinRequestRepo::new(&db),
             contact_exchanges: ContactExchangeRepo::new(&db),
+            sg_announcements: StudyGroupAnnouncementRepo::new(&db),
+            sg_events: StudyGroupEventRepo::new(&db),
             peer_reviews: PeerReviewRepo::new(&db),
             notifications: NotificationRepo::new(&db),
             competition_teams: CompetitionTeamRepo::new(&db),
