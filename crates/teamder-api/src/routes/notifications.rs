@@ -1,8 +1,10 @@
 use rocket::{Route, State, serde::json::Json};
+use rocket::futures::{SinkExt, StreamExt};
+use rocket_ws as ws;
 use serde_json::{Value, json};
 use teamder_core::models::notification::NotificationResponse;
 
-use crate::{error::ApiResult, guards::AuthUser, state::AppState};
+use crate::{auth::verify_token, error::{ApiResult, ApiError}, state::AppState, guards::AuthUser};
 
 /// GET /api/v1/notifications  — current user's notifications + unread count.
 #[get("/")]
@@ -27,6 +29,41 @@ async fn mark_all_read(auth: AuthUser, state: &State<AppState>) -> ApiResult<Val
     Ok(Json(json!({ "success": true })))
 }
 
+/// GET /api/v1/notifications/ws?<token>  — real-time push channel
+#[get("/ws?<token>")]
+pub async fn notif_ws(
+    ws: ws::WebSocket,
+    token: String,
+    state: &State<AppState>,
+) -> Result<ws::Channel<'static>, ApiError> {
+    let claims = verify_token(&token, &state.jwt_secret)?;
+    let user_id = claims.sub.clone();
+    let notif_hub = state.notif_hub.clone();
+    let mut rx = notif_hub.subscribe(&user_id).await;
+
+    Ok(ws.channel(move |mut stream| {
+        Box::pin(async move {
+            loop {
+                tokio::select! {
+                    frame = stream.next() => {
+                        // client closed
+                        if frame.is_none() { break; }
+                    }
+                    result = rx.recv() => {
+                        match result {
+                            Ok(text) => {
+                                let _ = stream.send(ws::Message::Text(text.into())).await;
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })
+    }))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![list_mine, mark_read, mark_all_read]
+    routes![list_mine, mark_read, mark_all_read, notif_ws]
 }

@@ -30,6 +30,7 @@ pub struct AppState {
     pub project_updates: ProjectUpdateRepo,
     pub skill_catalog: SkillCatalogRepo,
     pub chat: ChatState,
+    pub notif_hub: ChatState,
     pub jwt_secret: String,
     /// Tracks when a user last left a project. Key = "{user_id}:{project_id}"
     pub leave_log: Arc<Mutex<HashMap<String, DateTime<Utc>>>>,
@@ -60,6 +61,7 @@ impl AppState {
             project_updates: ProjectUpdateRepo::new(&db),
             skill_catalog: SkillCatalogRepo::new(&db),
             chat: ChatState::new(),
+            notif_hub: ChatState::new(),
             jwt_secret,
             leave_log: Arc::new(Mutex::new(HashMap::new())),
         }

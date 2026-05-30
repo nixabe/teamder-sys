@@ -145,7 +145,17 @@ async fn create_request(
                         format!("{} wants to join {}", from_name, project.name),
                         Some("/invites".into()),
                     );
-                    let _ = state.notifications.create(&n).await;
+                    if state.notifications.create(&n).await.is_ok() {
+                        let body_str = format!("{} wants to join {}", from_name, project.name);
+                        if let Ok(payload) = serde_json::to_string(&serde_json::json!({
+                            "kind": "join_request",
+                            "title": "New project application",
+                            "body": body_str,
+                            "link": "/invites"
+                        })) {
+                            state.notif_hub.send_to(&project.lead_user_id, payload).await;
+                        }
+                    }
                     Ok(Json(json!({ "joined": false, "mode": "approval", "request_id": req.id })))
                 }
             }

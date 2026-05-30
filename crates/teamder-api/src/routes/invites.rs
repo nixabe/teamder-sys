@@ -141,6 +141,13 @@ async fn send_invite(
     );
     if let Err(e) = state.notifications.create(&n).await {
         tracing::warn!("failed to create invite notification: {e}");
+    } else if let Ok(payload) = serde_json::to_string(&serde_json::json!({
+        "kind": "invite",
+        "title": "New invite",
+        "body": format!("{} invited you to collaborate", from_name),
+        "link": "/invites"
+    })) {
+        state.notif_hub.send_to(&invite.to_user_id, payload).await;
     }
 
     // Build full response with resolved names
