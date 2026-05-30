@@ -10,6 +10,7 @@ pub mod peer_review_repo;
 pub mod notification_repo;
 pub mod competition_team_repo;
 pub mod bookmark_repo;
+pub mod report_repo;
 pub mod project_update_repo;
 pub mod skill_catalog_repo;
 
@@ -25,5 +26,6 @@ pub use peer_review_repo::PeerReviewRepo;
 pub use notification_repo::NotificationRepo;
 pub use competition_team_repo::CompetitionTeamRepo;
 pub use bookmark_repo::BookmarkRepo;
+pub use report_repo::ReportRepo;
 pub use project_update_repo::ProjectUpdateRepo;
 pub use skill_catalog_repo::SkillCatalogRepo;

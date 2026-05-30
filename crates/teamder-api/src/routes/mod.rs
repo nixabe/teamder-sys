@@ -14,6 +14,7 @@ pub mod skills;
 pub mod notifications;
 pub mod competition_teams;
 pub mod bookmarks;
+pub mod reports;
 pub mod search;
 pub mod project_updates;
 pub mod admin_skills;

@@ -10,5 +10,6 @@ pub mod peer_review;
 pub mod notification;
 pub mod competition_team;
 pub mod bookmark;
+pub mod report;
 pub mod project_update;
 pub mod skill_catalog;
