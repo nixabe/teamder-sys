@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StudyGroupEvent {
-    #[serde(rename = "_id")]
+    #[serde(rename(serialize = "id", deserialize = "_id"))]
     pub id: String,
     pub group_id: String,
     pub author_id: String,
