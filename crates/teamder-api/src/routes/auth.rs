@@ -10,6 +10,30 @@ use crate::{auth, error::ApiResult, state::AppState};
 /// How long a verification code stays valid.
 const CODE_TTL_MINUTES: i64 = 10;
 
+/// Default domain allowed to create new accounts (Fu Jen student cloud mail).
+/// Override with the `REGISTER_EMAIL_DOMAIN` env var; set it to `*` (or empty)
+/// to disable the restriction. Login is never restricted, so existing/seeded
+/// accounts keep working.
+const ALLOWED_REGISTER_DOMAIN: &str = "cloud.fju.edu.tw";
+
+fn allowed_register_domain() -> Option<String> {
+    let configured = std::env::var("REGISTER_EMAIL_DOMAIN")
+        .unwrap_or_else(|_| ALLOWED_REGISTER_DOMAIN.to_string());
+    let configured = configured.trim().to_lowercase();
+    if configured.is_empty() || configured == "*" {
+        None
+    } else {
+        Some(configured)
+    }
+}
+
+fn register_domain_allowed(email: &str) -> bool {
+    match allowed_register_domain() {
+        None => true,
+        Some(allowed) => matches!(email.rsplit_once('@'), Some((_, domain)) if domain == allowed),
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct AuthResponse {
     token: String,
@@ -68,6 +92,12 @@ async fn request_code(
     let existing = state.users.find_by_email(&email).await?;
     match purpose {
         "register" => {
+            if !register_domain_allowed(&email) {
+                return Err(TeamderError::Validation(format!(
+                    "Registration is restricted to @{ALLOWED_REGISTER_DOMAIN} email addresses"
+                ))
+                .into());
+            }
             if existing.is_some() {
                 return Err(TeamderError::Conflict(format!(
                     "{email} is already registered — sign in instead"
@@ -141,6 +171,13 @@ async fn verify_code(req: Json<VerifyCodeRequest>, state: &State<AppState>) -> A
 
     let user = match purpose {
         "register" => {
+            // Defense in depth — the domain is also gated at request-code time.
+            if !register_domain_allowed(&email) {
+                return Err(TeamderError::Validation(format!(
+                    "Registration is restricted to @{ALLOWED_REGISTER_DOMAIN} email addresses"
+                ))
+                .into());
+            }
             // Guard against a race / double-submit creating a duplicate.
             if state.users.find_by_email(&email).await?.is_some() {
                 return Err(TeamderError::Conflict(format!(

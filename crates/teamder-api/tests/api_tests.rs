@@ -39,6 +39,10 @@ async fn setup() -> (Client, DbClient) {
     // response body (`dev_code`) instead of being emailed during tests.
     std::env::remove_var("SMTP_HOST");
 
+    // Disable the registration email-domain restriction so the existing
+    // @test.com fixtures can register.
+    std::env::set_var("REGISTER_EMAIL_DOMAIN", "*");
+
     let uri = std::env::var("MONGODB_URI")
         .unwrap_or_else(|_| "mongodb://localhost:27017".to_string());
 
@@ -214,6 +218,35 @@ async fn test_register_creates_account_and_returns_token() {
     assert_eq!(body["user"]["email"], "alice@test.com");
     assert_eq!(body["user"]["onboarded"], false);
 
+    teardown(&db).await;
+}
+
+#[tokio::test]
+async fn test_register_email_domain_restriction() {
+    let (client, db) = setup().await;
+    // Enable the restriction for this test (setup() disables it globally).
+    std::env::set_var("REGISTER_EMAIL_DOMAIN", "cloud.fju.edu.tw");
+
+    // A non-allowed domain is rejected at request-code time.
+    let bad = client
+        .post("/api/v1/auth/request-code")
+        .header(ContentType::JSON)
+        .body(json!({ "email": "outsider@gmail.com", "purpose": "register" }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(bad.status(), Status::UnprocessableEntity);
+
+    // The allowed domain is accepted.
+    let good = client
+        .post("/api/v1/auth/request-code")
+        .header(ContentType::JSON)
+        .body(json!({ "email": "student@cloud.fju.edu.tw", "purpose": "register" }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(good.status(), Status::Ok);
+
+    // Restore the relaxed setting for subsequent tests.
+    std::env::set_var("REGISTER_EMAIL_DOMAIN", "*");
     teardown(&db).await;
 }
 
