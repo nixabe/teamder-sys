@@ -35,6 +35,10 @@ async fn setup() -> (Client, DbClient) {
     // Load .env from this crate's directory or any parent (finds teamder-sys/.env)
     let _ = dotenvy::dotenv();
 
+    // Force the mailer into dev mode so verification codes are returned in the
+    // response body (`dev_code`) instead of being emailed during tests.
+    std::env::remove_var("SMTP_HOST");
+
     let uri = std::env::var("MONGODB_URI")
         .unwrap_or_else(|_| "mongodb://localhost:27017".to_string());
 
@@ -94,36 +98,57 @@ async fn teardown(db: &DbClient) {
     wipe_collections(db).await;
 }
 
-/// Register a user via the API and return (token, user_id).
-async fn register(client: &Client, email: &str, password: &str, name: &str) -> (String, String) {
+/// Register a user via the passwordless flow and return (token, user_id).
+/// The `_password` argument is retained for call-site compatibility but unused.
+/// After verification the placeholder profile is patched to the given name plus
+/// the default role/department the old registration endpoint used to set.
+async fn register(client: &Client, email: &str, _password: &str, name: &str) -> (String, String) {
+    // Step 1 — request a verification code (dev mode returns it in `dev_code`).
     let resp = client
-        .post("/api/v1/auth/register")
+        .post("/api/v1/auth/request-code")
         .header(ContentType::JSON)
-        .body(
-            json!({
-                "email": email,
-                "password": password,
-                "name": name,
-                "role": "Developer",
-                "department": "Computer Science"
-            })
-            .to_string(),
-        )
+        .body(json!({ "email": email, "purpose": "register" }).to_string())
         .dispatch()
         .await;
+    assert_eq!(resp.status(), Status::Ok, "request-code failed for {email}");
+    let body: Value = resp.into_json().await.unwrap();
+    let code = body["dev_code"]
+        .as_str()
+        .expect("dev_code missing — SMTP must be unset during tests")
+        .to_string();
 
-    assert_eq!(resp.status(), Status::Ok, "register failed for {email}");
+    // Step 2 — verify the code, which creates the account and returns a token.
+    let resp = client
+        .post("/api/v1/auth/verify-code")
+        .header(ContentType::JSON)
+        .body(json!({ "email": email, "code": code, "purpose": "register" }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(resp.status(), Status::Ok, "verify-code failed for {email}");
     let body: Value = resp.into_json().await.unwrap();
     let token = body["token"].as_str().unwrap().to_string();
     let user_id = body["user"]["id"].as_str().unwrap().to_string();
+
+    // Step 3 — fill in the profile fields registration used to take directly.
+    let patch = client
+        .patch(format!("/api/v1/users/{user_id}"))
+        .header(ContentType::JSON)
+        .header(bearer(&token))
+        .body(
+            json!({ "name": name, "role": "Developer", "department": "Computer Science" })
+                .to_string(),
+        )
+        .dispatch()
+        .await;
+    assert_eq!(patch.status(), Status::Ok, "profile patch failed for {email}");
+
     (token, user_id)
 }
 
 /// Directly insert an admin user into the DB and return (user_id, token).
 /// Used to test admin-only endpoints without going through a registration backdoor.
 async fn create_admin(db: &DbClient) -> (String, String) {
-    let hash = bcrypt::hash("admin1234", 4).expect("bcrypt failed");
-    let mut admin = User::new("admin@test.com", hash, "Test Admin", "Admin", "CS");
+    let mut admin = User::new("admin@test.com", "Test Admin", "Admin", "CS");
     admin.is_admin = true;
 
     let col: Collection<User> = db.db.collection("users");
@@ -155,25 +180,31 @@ async fn test_health_check() {
     teardown(&db).await;
 }
 
-// ── Auth: Register ────────────────────────────────────────────────────────────
+// ── Auth: Register (passwordless) ──────────────────────────────────────────────
+
+/// Request a verification code for `email`/`purpose` and return the dev code.
+async fn request_code(client: &Client, email: &str, purpose: &str) -> String {
+    let resp = client
+        .post("/api/v1/auth/request-code")
+        .header(ContentType::JSON)
+        .body(json!({ "email": email, "purpose": purpose }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(resp.status(), Status::Ok, "request-code failed for {email}");
+    let body: Value = resp.into_json().await.unwrap();
+    body["dev_code"].as_str().expect("dev_code missing").to_string()
+}
 
 #[tokio::test]
-async fn test_register_success() {
+async fn test_register_creates_account_and_returns_token() {
     let (client, db) = setup().await;
 
+    let code = request_code(&client, "alice@test.com", "register").await;
+
     let resp = client
-        .post("/api/v1/auth/register")
+        .post("/api/v1/auth/verify-code")
         .header(ContentType::JSON)
-        .body(
-            json!({
-                "email": "alice@test.com",
-                "password": "password123",
-                "name": "Alice Wang",
-                "role": "UI/UX Designer",
-                "department": "Digital Media"
-            })
-            .to_string(),
-        )
+        .body(json!({ "email": "alice@test.com", "code": code, "purpose": "register" }).to_string())
         .dispatch()
         .await;
 
@@ -181,8 +212,24 @@ async fn test_register_success() {
     let body: Value = resp.into_json().await.unwrap();
     assert!(body["token"].is_string());
     assert_eq!(body["user"]["email"], "alice@test.com");
-    assert_eq!(body["user"]["name"], "Alice Wang");
-    assert_eq!(body["user"]["initials"], "AW");
+    assert_eq!(body["user"]["onboarded"], false);
+
+    teardown(&db).await;
+}
+
+#[tokio::test]
+async fn test_register_wrong_code_returns_unauthorized() {
+    let (client, db) = setup().await;
+    let _ = request_code(&client, "alice@test.com", "register").await;
+
+    let resp = client
+        .post("/api/v1/auth/verify-code")
+        .header(ContentType::JSON)
+        .body(json!({ "email": "alice@test.com", "code": "000000", "purpose": "register" }).to_string())
+        .dispatch()
+        .await;
+
+    assert_eq!(resp.status(), Status::Unauthorized);
 
     teardown(&db).await;
 }
@@ -190,42 +237,26 @@ async fn test_register_success() {
 #[tokio::test]
 async fn test_register_duplicate_email_returns_conflict() {
     let (client, db) = setup().await;
+    register(&client, "dup@test.com", "x", "Dup User").await;
 
-    let body = json!({
-        "email": "dup@test.com",
-        "password": "pass1",
-        "name": "Dup User",
-        "role": "Dev",
-        "department": "CS"
-    })
-    .to_string();
-
-    let r1 = client
-        .post("/api/v1/auth/register")
+    // Requesting a register code for an already-registered email is rejected.
+    let resp = client
+        .post("/api/v1/auth/request-code")
         .header(ContentType::JSON)
-        .body(body.clone())
+        .body(json!({ "email": "dup@test.com", "purpose": "register" }).to_string())
         .dispatch()
         .await;
-    assert_eq!(r1.status(), Status::Ok);
-
-    let r2 = client
-        .post("/api/v1/auth/register")
-        .header(ContentType::JSON)
-        .body(body)
-        .dispatch()
-        .await;
-    assert_eq!(r2.status(), Status::Conflict);
+    assert_eq!(resp.status(), Status::Conflict);
 
     teardown(&db).await;
 }
 
 #[tokio::test]
-async fn test_register_missing_fields_returns_unprocessable() {
+async fn test_request_code_missing_purpose_returns_unprocessable() {
     let (client, db) = setup().await;
 
-    // Missing required fields
     let resp = client
-        .post("/api/v1/auth/register")
+        .post("/api/v1/auth/request-code")
         .header(ContentType::JSON)
         .body(json!({ "email": "x@y.com" }).to_string())
         .dispatch()
@@ -236,17 +267,18 @@ async fn test_register_missing_fields_returns_unprocessable() {
     teardown(&db).await;
 }
 
-// ── Auth: Login ───────────────────────────────────────────────────────────────
+// ── Auth: Login (passwordless) ──────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_login_success() {
     let (client, db) = setup().await;
-    register(&client, "bob@test.com", "secret123", "Bob Lin").await;
+    register(&client, "bob@test.com", "x", "Bob Lin").await;
 
+    let code = request_code(&client, "bob@test.com", "login").await;
     let resp = client
-        .post("/api/v1/auth/login")
+        .post("/api/v1/auth/verify-code")
         .header(ContentType::JSON)
-        .body(json!({ "email": "bob@test.com", "password": "secret123" }).to_string())
+        .body(json!({ "email": "bob@test.com", "code": code, "purpose": "login" }).to_string())
         .dispatch()
         .await;
 
@@ -259,14 +291,15 @@ async fn test_login_success() {
 }
 
 #[tokio::test]
-async fn test_login_wrong_password_returns_unauthorized() {
+async fn test_login_wrong_code_returns_unauthorized() {
     let (client, db) = setup().await;
-    register(&client, "bob@test.com", "correct", "Bob Lin").await;
+    register(&client, "bob@test.com", "x", "Bob Lin").await;
+    let _ = request_code(&client, "bob@test.com", "login").await;
 
     let resp = client
-        .post("/api/v1/auth/login")
+        .post("/api/v1/auth/verify-code")
         .header(ContentType::JSON)
-        .body(json!({ "email": "bob@test.com", "password": "wrong" }).to_string())
+        .body(json!({ "email": "bob@test.com", "code": "999999", "purpose": "login" }).to_string())
         .dispatch()
         .await;
 
@@ -276,17 +309,17 @@ async fn test_login_wrong_password_returns_unauthorized() {
 }
 
 #[tokio::test]
-async fn test_login_unknown_email_returns_unauthorized() {
+async fn test_login_unknown_email_returns_not_found() {
     let (client, db) = setup().await;
 
     let resp = client
-        .post("/api/v1/auth/login")
+        .post("/api/v1/auth/request-code")
         .header(ContentType::JSON)
-        .body(json!({ "email": "nobody@test.com", "password": "pass" }).to_string())
+        .body(json!({ "email": "nobody@test.com", "purpose": "login" }).to_string())
         .dispatch()
         .await;
 
-    assert_eq!(resp.status(), Status::Unauthorized);
+    assert_eq!(resp.status(), Status::NotFound);
 
     teardown(&db).await;
 }
@@ -997,7 +1030,8 @@ async fn test_join_study_group_success() {
     let body: Value = resp.into_json().await.unwrap();
     assert_eq!(body["success"], true);
 
-    // Verify member_count increased
+    // Verify member_count increased. The creator is auto-added as a member on
+    // creation, so after user B joins the group has 2 members.
     let group_resp: Value = client
         .get(format!("/api/v1/study-groups/{group_id}"))
         .dispatch()
@@ -1005,7 +1039,7 @@ async fn test_join_study_group_success() {
         .into_json()
         .await
         .unwrap();
-    assert_eq!(group_resp["member_count"], 1);
+    assert_eq!(group_resp["member_count"], 2);
 
     teardown(&db).await;
 }

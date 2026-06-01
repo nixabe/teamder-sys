@@ -2,16 +2,13 @@ use rocket::{Route, State, serde::json::Json};
 use serde::{Deserialize, Serialize};
 use teamder_core::{
     error::TeamderError,
-    models::user::{CreateUserRequest, User},
+    models::{auth_code::AuthCode, user::User},
 };
 
 use crate::{auth, error::ApiResult, state::AppState};
 
-#[derive(Debug, Deserialize)]
-struct LoginRequest {
-    email: String,
-    password: String,
-}
+/// How long a verification code stays valid.
+const CODE_TTL_MINUTES: i64 = 10;
 
 #[derive(Debug, Serialize)]
 struct AuthResponse {
@@ -19,113 +16,164 @@ struct AuthResponse {
     user: teamder_core::models::user::UserResponse,
 }
 
-/// POST /api/v1/auth/register
-#[post("/register", data = "<req>")]
-async fn register(
-    req: Json<CreateUserRequest>,
+#[derive(Debug, Deserialize)]
+struct RequestCodeRequest {
+    email: String,
+    /// "register" | "login" | "delete"
+    purpose: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RequestCodeResponse {
+    success: bool,
+    /// Only populated when SMTP isn't configured (dev mode) so the flow stays
+    /// testable without an email server. `null` in production.
+    dev_code: Option<String>,
+}
+
+fn is_valid_email(email: &str) -> bool {
+    // Minimal sanity check: exactly one '@', non-empty local + domain, a dot in domain.
+    let mut parts = email.split('@');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(local), Some(domain), None) => {
+            !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
+        }
+        _ => false,
+    }
+}
+
+fn generate_code() -> String {
+    // 6-digit numeric code. Uuid gives us entropy without pulling in `rand`.
+    let n = uuid::Uuid::new_v4().as_u128() % 1_000_000;
+    format!("{n:06}")
+}
+
+/// POST /api/v1/auth/request-code
+/// Issues a verification code and emails it (or logs it in dev mode).
+#[post("/request-code", data = "<req>")]
+async fn request_code(
+    req: Json<RequestCodeRequest>,
     state: &State<AppState>,
-) -> ApiResult<AuthResponse> {
+) -> ApiResult<RequestCodeResponse> {
     let email = req.email.trim().to_lowercase();
+    let purpose = req.purpose.trim();
 
-    // Check if email already exists
-    if state
-        .users
-        .find_by_email(&email)
-        .await?
-        .is_some()
-    {
-        return Err(TeamderError::Conflict(format!(
-            "Email {} is already registered",
-            email
-        ))
-        .into());
+    if !is_valid_email(&email) {
+        return Err(TeamderError::Validation("Please enter a valid email address".into()).into());
+    }
+    if !matches!(purpose, "register" | "login" | "delete") {
+        return Err(TeamderError::Validation("Unknown verification purpose".into()).into());
     }
 
-    let password_hash = bcrypt::hash(&req.password, bcrypt::DEFAULT_COST)
-        .map_err(|e| TeamderError::Internal(e.to_string()))?;
-
-    let mut user = User::new(
-        &email,
-        password_hash,
-        &req.name,
-        &req.role,
-        &req.department,
-    );
-    if let Some(u) = &req.university {
-        if !u.trim().is_empty() { user.university = u.clone(); }
-    }
-    if let Some(y) = &req.year {
-        if !y.trim().is_empty() { user.year = y.clone(); }
-    }
-    if let Some(h) = &req.headline {
-        if !h.trim().is_empty() { user.headline = Some(h.clone()); }
-    }
-    if let Some(l) = &req.location {
-        if !l.trim().is_empty() { user.location = Some(l.clone()); }
-    }
-    if let Some(wm) = &req.work_mode {
-        user.work_mode = wm.clone();
-    }
-    if let Some(h) = &req.hours_per_week {
-        if !h.trim().is_empty() { user.hours_per_week = h.clone(); }
-    }
-    if let Some(langs) = &req.languages {
-        if !langs.is_empty() { user.languages = langs.clone(); }
-    }
-    if let Some(links) = &req.social_links {
-        user.social_links = links.clone();
-    }
-    if let Some(tags) = &req.interests {
-        user.interests = tags.clone();
-    }
-    if let Some(tz) = &req.timezone {
-        if !tz.trim().is_empty() { user.timezone = Some(tz.clone()); }
-    }
-    if let Some(g) = &req.goals {
-        if !g.trim().is_empty() { user.goals = Some(g.clone()); }
+    let existing = state.users.find_by_email(&email).await?;
+    match purpose {
+        "register" => {
+            if existing.is_some() {
+                return Err(TeamderError::Conflict(format!(
+                    "{email} is already registered — sign in instead"
+                ))
+                .into());
+            }
+        }
+        "login" | "delete" => {
+            if existing.is_none() {
+                return Err(TeamderError::NotFound(
+                    "No account is registered with that email".into(),
+                )
+                .into());
+            }
+            if let Some(u) = &existing {
+                if u.is_banned {
+                    return Err(
+                        TeamderError::Suspended("Your account has been suspended.".into()).into(),
+                    );
+                }
+            }
+        }
+        _ => unreachable!(),
     }
 
-    state.users.create(&user).await?;
+    let code = generate_code();
+    let record = AuthCode::new(&email, &code, purpose, CODE_TTL_MINUTES);
+    state.auth_codes.set_code(&record).await?;
 
-    let token = auth::create_token(&user.id, &user.email, user.is_admin, user.is_publisher, &state.jwt_secret)?;
+    state.mailer.send_code(&email, &code, purpose).await?;
 
-    Ok(Json(AuthResponse {
-        token,
-        user: user.into(),
+    Ok(Json(RequestCodeResponse {
+        success: true,
+        dev_code: if state.mailer.is_live() { None } else { Some(code) },
     }))
 }
 
-/// POST /api/v1/auth/login
-#[post("/login", data = "<req>")]
-async fn login(req: Json<LoginRequest>, state: &State<AppState>) -> ApiResult<AuthResponse> {
+#[derive(Debug, Deserialize)]
+struct VerifyCodeRequest {
+    email: String,
+    code: String,
+    /// "register" | "login"
+    purpose: String,
+}
+
+/// POST /api/v1/auth/verify-code
+/// Consumes a code. For "register" it creates the account; for "login" it
+/// returns a token for the existing account. Either way you end up logged in.
+#[post("/verify-code", data = "<req>")]
+async fn verify_code(req: Json<VerifyCodeRequest>, state: &State<AppState>) -> ApiResult<AuthResponse> {
     let email = req.email.trim().to_lowercase();
+    let purpose = req.purpose.trim();
+    let code = req.code.trim();
 
-    let user = state
-        .users
-        .find_by_email(&email)
-        .await
-        .map_err(|e| {
-            tracing::error!("DB error during login for {}: {}", email, e);
-            e
-        })?
-        .ok_or_else(|| {
-            tracing::warn!("Login failed: no user found for email {}", email);
-            TeamderError::Unauthorized
-        })?;
+    if !matches!(purpose, "register" | "login") {
+        return Err(TeamderError::Validation("Unknown verification purpose".into()).into());
+    }
 
-    let valid = bcrypt::verify(&req.password, &user.password_hash)
-        .map_err(|e| TeamderError::Internal(e.to_string()))?;
+    let record = state
+        .auth_codes
+        .find(&email, purpose)
+        .await?
+        .ok_or(TeamderError::Unauthorized)?;
 
-    if !valid {
-        tracing::warn!("Login failed: wrong password for email {}", email);
+    if record.is_expired() || record.code != code {
         return Err(TeamderError::Unauthorized.into());
     }
+
+    // Single-use: clear the code regardless of branch below.
+    state.auth_codes.delete(&email, purpose).await?;
+
+    let user = match purpose {
+        "register" => {
+            // Guard against a race / double-submit creating a duplicate.
+            if state.users.find_by_email(&email).await?.is_some() {
+                return Err(TeamderError::Conflict(format!(
+                    "{email} is already registered"
+                ))
+                .into());
+            }
+            // Seed a placeholder name from the email local part; the onboarding
+            // wizard fills in the real name, role and department afterwards.
+            let placeholder_name = email.split('@').next().unwrap_or("New user");
+            let user = User::new(&email, placeholder_name, "", "");
+            state.users.create(&user).await?;
+            user
+        }
+        "login" => state
+            .users
+            .find_by_email(&email)
+            .await?
+            .ok_or(TeamderError::Unauthorized)?,
+        _ => unreachable!(),
+    };
 
     if user.is_banned {
         return Err(TeamderError::Suspended("Your account has been suspended.".into()).into());
     }
 
-    let token = auth::create_token(&user.id, &user.email, user.is_admin, user.is_publisher, &state.jwt_secret)?;
+    let token = auth::create_token(
+        &user.id,
+        &user.email,
+        user.is_admin,
+        user.is_publisher,
+        &state.jwt_secret,
+    )?;
 
     Ok(Json(AuthResponse {
         token,
@@ -133,89 +181,6 @@ async fn login(req: Json<LoginRequest>, state: &State<AppState>) -> ApiResult<Au
     }))
 }
 
-#[derive(Debug, Deserialize)]
-struct ForgotPasswordRequest {
-    email: String,
-}
-
-#[derive(Debug, Serialize)]
-struct ForgotPasswordResponse {
-    /// Always true — never reveals whether the email is registered, to avoid
-    /// leaking the user list. The token is included only in dev (no SMTP).
-    success: bool,
-    /// In production this would be sent via email; we return it directly so the
-    /// frontend can show a "your reset link" callout without infrastructure.
-    reset_token: Option<String>,
-}
-
-/// POST /api/v1/auth/forgot-password
-#[post("/forgot-password", data = "<req>")]
-async fn forgot_password(
-    req: Json<ForgotPasswordRequest>,
-    state: &State<AppState>,
-) -> ApiResult<ForgotPasswordResponse> {
-    let user = state.users.find_by_email(&req.email).await?;
-    let token_opt = if let Some(u) = user {
-        // Two UUIDs concatenated (hyphens stripped) → 64-char hex token.
-        // Valid for 30 minutes. Cryptographic uniqueness is enough here since
-        // the token is checked exact-match and short-lived.
-        let token = format!(
-            "{}{}",
-            uuid::Uuid::new_v4().simple(),
-            uuid::Uuid::new_v4().simple()
-        );
-        let expires = chrono::Utc::now() + chrono::Duration::minutes(30);
-        state
-            .users
-            .set_reset_token(&u.id, Some(&token), Some(expires))
-            .await?;
-        Some(token)
-    } else {
-        None
-    };
-    Ok(Json(ForgotPasswordResponse {
-        success: true,
-        reset_token: token_opt,
-    }))
-}
-
-#[derive(Debug, Deserialize)]
-struct ResetPasswordRequest {
-    token: String,
-    new_password: String,
-}
-
-/// POST /api/v1/auth/reset-password
-#[post("/reset-password", data = "<req>")]
-async fn reset_password(
-    req: Json<ResetPasswordRequest>,
-    state: &State<AppState>,
-) -> ApiResult<serde_json::Value> {
-    if req.new_password.len() < 6 {
-        return Err(TeamderError::Validation("Password must be at least 6 characters".into()).into());
-    }
-
-    let user = state
-        .users
-        .find_by_reset_token(&req.token)
-        .await?
-        .ok_or_else(|| TeamderError::Unauthorized)?;
-
-    let valid = user
-        .reset_token_expires_at
-        .map(|exp| exp > chrono::Utc::now())
-        .unwrap_or(false);
-    if !valid {
-        return Err(TeamderError::Unauthorized.into());
-    }
-
-    let hash = bcrypt::hash(&req.new_password, bcrypt::DEFAULT_COST)
-        .map_err(|e| TeamderError::Internal(e.to_string()))?;
-    state.users.set_password_hash(&user.id, &hash).await?;
-
-    Ok(Json(serde_json::json!({ "success": true })))
-}
-
 pub fn routes() -> Vec<Route> {
-    routes![register, login, forgot_password, reset_password]
+    routes![request_code, verify_code]
 }

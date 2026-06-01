@@ -56,8 +56,8 @@ rocket_cors = "0.6"
 # WebSockets
 rocket_ws = "0.1"
 
-# bcrypt for passwords
-bcrypt = "0.15"
+# SMTP email (passwordless verification codes)
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls-tls", "hostname"] }
 
 # JWT
 jsonwebtoken = "9"

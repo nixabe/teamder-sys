@@ -92,9 +92,10 @@ async fn get_group(id: String, state: &State<AppState>) -> ApiResult<Value> {
         streak: m.streak,
     }).collect();
 
+    let member_count = members.len();
     let detail = StudyGroupDetail {
         id: g.id, name: g.name, goal: g.goal, icon: g.icon, icon_bg: g.icon_bg,
-        subject: g.subject, tags: g.tags, members, max_members: g.max_members,
+        subject: g.subject, tags: g.tags, members, member_count, max_members: g.max_members,
         schedule: g.schedule, duration_weeks: g.duration_weeks,
         current_week: g.current_week, progress_percent: progress,
         is_open: g.is_open, status: g.status, join_mode: g.join_mode,
@@ -251,9 +252,10 @@ async fn joined_groups(auth: AuthUser, state: &State<AppState>) -> ApiResult<Val
             joined_at: m.joined_at,
             streak: m.streak,
         }).collect();
+        let member_count = members.len();
         StudyGroupDetail {
             id: g.id, name: g.name, goal: g.goal, icon: g.icon, icon_bg: g.icon_bg,
-            subject: g.subject, tags: g.tags, members, max_members: g.max_members,
+            subject: g.subject, tags: g.tags, members, member_count, max_members: g.max_members,
             schedule: g.schedule, duration_weeks: g.duration_weeks,
             current_week: g.current_week, progress_percent: progress,
             is_open: g.is_open, status: g.status, join_mode: g.join_mode,

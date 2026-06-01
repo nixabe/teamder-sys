@@ -4,18 +4,20 @@ use chrono::{DateTime, Utc};
 use teamder_db::{
     DbClient,
     repos::{
-        BookmarkRepo, CompetitionRepo, CompetitionTeamRepo, ContactExchangeRepo, InviteRepo,
-        JoinRequestRepo, MessageRepo, NotificationRepo, PeerReviewRepo, ProjectRepo,
+        AuthCodeRepo, BookmarkRepo, CompetitionRepo, CompetitionTeamRepo, ContactExchangeRepo,
+        InviteRepo, JoinRequestRepo, MessageRepo, NotificationRepo, PeerReviewRepo, ProjectRepo,
         ProjectUpdateRepo, ReportRepo, SkillCatalogRepo, StudyGroupRepo,
         StudyGroupAnnouncementRepo, StudyGroupEventRepo, UserRepo,
     },
 };
 
-use crate::chat::ChatState;
+use crate::{chat::ChatState, mailer::Mailer};
 
 /// Shared application state injected into every Rocket handler.
 pub struct AppState {
     pub users: UserRepo,
+    pub auth_codes: AuthCodeRepo,
+    pub mailer: Mailer,
     pub projects: ProjectRepo,
     pub competitions: CompetitionRepo,
     pub study_groups: StudyGroupRepo,
@@ -49,6 +51,8 @@ impl AppState {
     pub fn new_with_secret(db: DbClient, jwt_secret: String) -> Self {
         Self {
             users: UserRepo::new(&db),
+            auth_codes: AuthCodeRepo::new(&db),
+            mailer: Mailer::from_env(),
             projects: ProjectRepo::new(&db),
             competitions: CompetitionRepo::new(&db),
             study_groups: StudyGroupRepo::new(&db),

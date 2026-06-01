@@ -227,11 +227,13 @@ async fn delete_user(id: String, auth: AuthUser, state: &State<AppState>) -> Api
 
 #[derive(Debug, serde::Deserialize)]
 struct DeleteAccountRequest {
-    password: String,
+    /// Verification code emailed to the account holder (purpose "delete").
+    code: String,
 }
 
 /// POST /api/v1/users/me/delete — self-service account closure.
-/// Requires the current password, then cascades all related data.
+/// Requires a fresh email verification code (request it via
+/// `/auth/request-code` with purpose "delete"), then cascades all related data.
 #[post("/me/delete", data = "<req>")]
 async fn delete_account(
     req: Json<DeleteAccountRequest>,
@@ -244,11 +246,15 @@ async fn delete_account(
         .await?
         .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
 
-    let valid = bcrypt::verify(&req.password, &user.password_hash)
-        .map_err(|e| TeamderError::Internal(e.to_string()))?;
-    if !valid {
+    let record = state
+        .auth_codes
+        .find(&user.email, "delete")
+        .await?
+        .ok_or(TeamderError::Unauthorized)?;
+    if record.is_expired() || record.code != req.code.trim() {
         return Err(TeamderError::Unauthorized.into());
     }
+    state.auth_codes.delete(&user.email, "delete").await?;
 
     cascade_delete_user(&**state, &auth.0.sub).await?;
 
@@ -269,40 +275,11 @@ async fn me(auth: AuthUser, state: &State<AppState>) -> ApiResult<UserResponse> 
     Ok(Json(user.into()))
 }
 
-#[derive(Debug, serde::Deserialize)]
-struct ChangePasswordRequest {
-    old_password: String,
-    new_password: String,
-}
-
-/// POST /api/v1/users/me/change-password
-#[post("/me/change-password", data = "<req>")]
-async fn change_password(
-    req: Json<ChangePasswordRequest>,
-    auth: AuthUser,
-    state: &State<AppState>,
-) -> ApiResult<Value> {
-    let user = state.users.find_by_id(&auth.0.sub).await?
-        .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
-    let valid = bcrypt::verify(&req.old_password, &user.password_hash)
-        .map_err(|e| TeamderError::Internal(e.to_string()))?;
-    if !valid {
-        return Err(TeamderError::Unauthorized.into());
-    }
-    if req.new_password.len() < 6 {
-        return Err(TeamderError::Validation("New password must be ≥ 6 characters".into()).into());
-    }
-    let hash = bcrypt::hash(&req.new_password, bcrypt::DEFAULT_COST)
-        .map_err(|e| TeamderError::Internal(e.to_string()))?;
-    state.users.set_password_hash(&user.id, &hash).await?;
-    Ok(Json(json!({ "success": true })))
-}
-
 /// POST /api/v1/users/me/onboard
 #[post("/me/onboard")]
 async fn complete_onboarding(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
     let req = teamder_core::models::user::UpdateUserRequest {
-        name: None, role: None, department: None, year: None, location: None,
+        name: None, role: None, department: None, university: None, year: None, location: None,
         bio: None, skills: None, skill_tags: None, work_mode: None,
         availability: None, hours_per_week: None, languages: None,
         portfolio: None, avatar_url: None, banner_url: None, resume_url: None,
@@ -317,5 +294,5 @@ async fn complete_onboarding(auth: AuthUser, state: &State<AppState>) -> ApiResu
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![list_users, get_user, update_user, delete_user, delete_account, me, change_password, complete_onboarding]
+    routes![list_users, get_user, update_user, delete_user, delete_account, me, complete_onboarding]
 }

@@ -75,7 +75,6 @@ pub struct User {
     #[serde(rename = "_id")]
     pub id: String,
     pub email: String,
-    pub password_hash: String,
     pub name: String,
     pub initials: String,
     pub role: String,
@@ -107,12 +106,6 @@ pub struct User {
     pub banner_url: Option<String>,
     #[serde(default)]
     pub resume_url: Option<String>,
-    /// Single-use password reset token (hex). Cleared after a successful reset.
-    #[serde(default)]
-    pub reset_token: Option<String>,
-    /// Expiry for the reset token (RFC3339 string for portability).
-    #[serde(default)]
-    pub reset_token_expires_at: Option<DateTime<Utc>>,
     /// Has the user completed the onboarding wizard?
     #[serde(default)]
     pub onboarded: bool,
@@ -161,7 +154,6 @@ fn default_true() -> bool { true }
 impl User {
     pub fn new(
         email: impl Into<String>,
-        password_hash: impl Into<String>,
         name: impl Into<String>,
         role: impl Into<String>,
         department: impl Into<String>,
@@ -177,7 +169,6 @@ impl User {
         Self {
             id: Uuid::new_v4().to_string(),
             email: email.into(),
-            password_hash: password_hash.into(),
             name,
             initials,
             role: role.into(),
@@ -204,8 +195,6 @@ impl User {
             avatar_url: None,
             banner_url: None,
             resume_url: None,
-            reset_token: None,
-            reset_token_expires_at: None,
             onboarded: false,
             headline: None,
             notify_email: true,
@@ -229,7 +218,6 @@ impl User {
 #[derive(Debug, Deserialize)]
 pub struct CreateUserRequest {
     pub email: String,
-    pub password: String,
     pub name: String,
     pub role: String,
     pub department: String,
@@ -275,6 +263,7 @@ pub struct UpdateUserRequest {
     pub name: Option<String>,
     pub role: Option<String>,
     pub department: Option<String>,
+    pub university: Option<String>,
     pub year: Option<String>,
     pub location: Option<String>,
     pub bio: Option<Vec<String>>,
@@ -410,55 +399,55 @@ mod tests {
 
     #[test]
     fn test_initials_two_words() {
-        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        let u = User::new("a@b.com","Alice Wang", "Dev", "CS");
         assert_eq!(u.initials, "AW");
     }
 
     #[test]
     fn test_initials_single_word() {
-        let u = User::new("a@b.com", "hash", "Alice", "Dev", "CS");
+        let u = User::new("a@b.com","Alice", "Dev", "CS");
         assert_eq!(u.initials, "A");
     }
 
     #[test]
     fn test_initials_many_words_capped_at_two() {
-        let u = User::new("a@b.com", "hash", "Alice Bob Chen", "Dev", "CS");
+        let u = User::new("a@b.com","Alice Bob Chen", "Dev", "CS");
         assert_eq!(u.initials, "AB");
     }
 
     #[test]
     fn test_initials_lowercase_input_is_uppercased() {
-        let u = User::new("a@b.com", "hash", "alice wang", "Dev", "CS");
+        let u = User::new("a@b.com","alice wang", "Dev", "CS");
         assert_eq!(u.initials, "AW");
     }
 
     #[test]
     fn test_default_is_not_admin() {
-        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        let u = User::new("a@b.com","Alice Wang", "Dev", "CS");
         assert!(!u.is_admin);
     }
 
     #[test]
     fn test_default_availability_open_for_collab() {
-        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        let u = User::new("a@b.com","Alice Wang", "Dev", "CS");
         assert_eq!(u.availability, AvailabilityStatus::OpenForCollab);
     }
 
     #[test]
     fn test_default_work_mode_hybrid() {
-        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        let u = User::new("a@b.com","Alice Wang", "Dev", "CS");
         assert_eq!(u.work_mode, WorkMode::Hybrid);
     }
 
     #[test]
     fn test_default_match_score_zero() {
-        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        let u = User::new("a@b.com","Alice Wang", "Dev", "CS");
         assert_eq!(u.match_score, 0);
     }
 
     #[test]
     fn test_id_is_uuid_like() {
-        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        let u = User::new("a@b.com","Alice Wang", "Dev", "CS");
         // UUID v4 has 36 chars with hyphens
         assert_eq!(u.id.len(), 36);
         assert!(u.id.contains('-'));
@@ -466,7 +455,7 @@ mod tests {
 
     #[test]
     fn test_response_strips_password_hash() {
-        let u = User::new("a@b.com", "secret_hash", "Alice Wang", "Dev", "CS");
+        let u = User::new("a@b.com", "Alice Wang", "Dev", "CS");
         let resp = UserResponse::from(u.clone());
         // The response type doesn't even have a password_hash field
         assert_eq!(resp.id, u.id);
@@ -476,20 +465,20 @@ mod tests {
 
     #[test]
     fn test_two_users_have_different_ids() {
-        let u1 = User::new("a@b.com", "h", "Alice Wang", "Dev", "CS");
-        let u2 = User::new("b@c.com", "h", "Bob Lin", "Dev", "CS");
+        let u1 = User::new("a@b.com", "Alice Wang", "Dev", "CS");
+        let u2 = User::new("b@c.com", "Bob Lin", "Dev", "CS");
         assert_ne!(u1.id, u2.id);
     }
 
     #[test]
     fn test_new_user_not_publisher() {
-        let u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        let u = User::new("a@b.com","Alice Wang", "Dev", "CS");
         assert!(!u.is_publisher);
     }
 
     #[test]
     fn test_user_response_maps_is_publisher() {
-        let mut u = User::new("a@b.com", "hash", "Alice Wang", "Dev", "CS");
+        let mut u = User::new("a@b.com","Alice Wang", "Dev", "CS");
         u.is_publisher = true;
         let resp = UserResponse::from(u);
         assert!(resp.is_publisher);

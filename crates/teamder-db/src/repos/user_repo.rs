@@ -125,12 +125,24 @@ impl UserRepo {
 
         if let Some(v) = &req.name {
             update_doc.insert("name", v.clone());
+            // Keep initials in sync with the name (set from the email local part
+            // at signup, then corrected here once the real name is provided).
+            let initials: String = v
+                .split_whitespace()
+                .filter_map(|w| w.chars().next())
+                .take(2)
+                .collect::<String>()
+                .to_uppercase();
+            update_doc.insert("initials", initials);
         }
         if let Some(v) = &req.role {
             update_doc.insert("role", v.clone());
         }
         if let Some(v) = &req.department {
             update_doc.insert("department", v.clone());
+        }
+        if let Some(v) = &req.university {
+            update_doc.insert("university", v.clone());
         }
         if let Some(v) = &req.year {
             update_doc.insert("year", v.clone());
@@ -357,62 +369,6 @@ impl UserRepo {
         };
         self.col
             .update_one(filter, update)
-            .await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Set a password reset token + expiry (or clear them by passing None).
-    pub async fn set_reset_token(
-        &self,
-        id: &str,
-        token: Option<&str>,
-        expires_at: Option<chrono::DateTime<chrono::Utc>>,
-    ) -> Result<(), TeamderError> {
-        let token_bson = match token {
-            Some(t) => mongodb::bson::Bson::String(t.to_string()),
-            None => mongodb::bson::Bson::Null,
-        };
-        let exp_bson = match expires_at {
-            Some(e) => mongodb::bson::Bson::String(e.to_rfc3339()),
-            None => mongodb::bson::Bson::Null,
-        };
-        self.col
-            .update_one(
-                doc! { "_id": id },
-                doc! {
-                    "$set": {
-                        "reset_token": token_bson,
-                        "reset_token_expires_at": exp_bson,
-                        "updated_at": Utc::now().to_rfc3339(),
-                    }
-                },
-            )
-            .await
-            .map_err(|e| TeamderError::Database(e.to_string()))?;
-        Ok(())
-    }
-
-    pub async fn find_by_reset_token(&self, token: &str) -> Result<Option<User>, TeamderError> {
-        self.col
-            .find_one(doc! { "reset_token": token })
-            .await
-            .map_err(|e| TeamderError::Database(e.to_string()))
-    }
-
-    pub async fn set_password_hash(&self, id: &str, hash: &str) -> Result<(), TeamderError> {
-        self.col
-            .update_one(
-                doc! { "_id": id },
-                doc! {
-                    "$set": {
-                        "password_hash": hash,
-                        "reset_token": mongodb::bson::Bson::Null,
-                        "reset_token_expires_at": mongodb::bson::Bson::Null,
-                        "updated_at": Utc::now().to_rfc3339(),
-                    }
-                },
-            )
             .await
             .map_err(|e| TeamderError::Database(e.to_string()))?;
         Ok(())

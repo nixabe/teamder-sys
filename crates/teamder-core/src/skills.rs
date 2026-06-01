@@ -543,7 +543,7 @@ mod tests {
     use crate::models::user::{Skill, User};
 
     fn user_with_skills(name: &str, tags: Vec<&str>) -> User {
-        let mut u = User::new("e@x.com", "h", name, "Dev", "CS");
+        let mut u = User::new("e@x.com", name, "Dev", "CS");
         u.skill_tags = tags.iter().map(|s| s.to_string()).collect();
         u.skills = tags
             .iter()
@@ -594,8 +594,8 @@ mod tests {
 
     #[test]
     fn empty_inputs_return_baseline() {
-        let a = User::new("a@x.com", "h", "A", "Dev", "CS");
-        let b = User::new("b@x.com", "h", "B", "Dev", "CS");
+        let a = User::new("a@x.com", "A", "Dev", "CS");
+        let b = User::new("b@x.com", "B", "Dev", "CS");
         let s = compute_match_score(&a, &b, &[], &[]);
         assert!(s > 0 && s < 100);
     }

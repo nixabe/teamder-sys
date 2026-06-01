@@ -16,4 +16,3 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 futures-util = { workspace = true }
-bcrypt = { workspace = true }

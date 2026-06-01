@@ -5,6 +5,7 @@ pub mod auth;
 pub mod chat;
 pub mod error;
 pub mod guards;
+pub mod mailer;
 pub mod routes;
 pub mod state;
 

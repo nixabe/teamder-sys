@@ -145,7 +145,6 @@ struct UserSpec {
 }
 
 async fn seed_users(db: &DbClient) -> Result<()> {
-    let hash = |pw: &str| bcrypt::hash(pw, bcrypt::DEFAULT_COST).unwrap();
     let now = Utc::now();
 
     let specs: Vec<UserSpec> = vec![
@@ -366,9 +365,8 @@ async fn seed_users(db: &DbClient) -> Result<()> {
         .into_iter()
         .enumerate()
         .map(|(i, s)| {
-            let mut u = User::new(s.email, hash("password123"), s.name, s.role, s.dept);
+            let mut u = User::new(s.email, s.name, s.role, s.dept);
             if s.is_admin {
-                u.password_hash = hash("admin1234");
                 u.is_admin = true;
                 u.is_publisher = true;
             }

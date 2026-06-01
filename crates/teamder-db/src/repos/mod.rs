@@ -1,4 +1,5 @@
 pub mod user_repo;
+pub mod auth_code_repo;
 pub mod contact_exchange_repo;
 pub mod project_repo;
 pub mod competition_repo;
@@ -17,6 +18,7 @@ pub mod project_update_repo;
 pub mod skill_catalog_repo;
 
 pub use user_repo::UserRepo;
+pub use auth_code_repo::AuthCodeRepo;
 pub use contact_exchange_repo::ContactExchangeRepo;
 pub use project_repo::ProjectRepo;
 pub use competition_repo::CompetitionRepo;

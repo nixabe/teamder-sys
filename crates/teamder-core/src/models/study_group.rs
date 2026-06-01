@@ -153,6 +153,7 @@ pub struct StudyGroupDetail {
     pub subject: String,
     pub tags: Vec<String>,
     pub members: Vec<GroupMemberEnriched>,
+    pub member_count: usize,
     pub max_members: u8,
     pub schedule: String,
     pub duration_weeks: u8,

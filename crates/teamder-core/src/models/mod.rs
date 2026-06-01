@@ -1,4 +1,5 @@
 pub mod user;
+pub mod auth_code;
 pub mod contact_exchange;
 pub mod project;
 pub mod competition;
