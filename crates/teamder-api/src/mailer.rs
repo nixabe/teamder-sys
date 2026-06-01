@@ -1,5 +1,6 @@
 use lettre::{
     transport::smtp::authentication::Credentials,
+    transport::smtp::client::{Tls, TlsParameters, TlsVersion},
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
 use teamder_core::error::TeamderError;
@@ -48,11 +49,26 @@ impl Mailer {
         let password = std::env::var("SMTP_PASSWORD").unwrap_or_default();
         let from = std::env::var("SMTP_FROM").unwrap_or_else(|_| username.clone());
 
-        // STARTTLS on 587, implicit TLS on 465, plaintext otherwise.
+        // Pin the TLS floor to 1.2. (rustls negotiates 1.2 or 1.3; lettre only
+        // exposes a minimum, not a maximum, so 1.3 may still be used if the
+        // server offers it.)
+        let tls = match TlsParameters::builder(host.clone())
+            .set_min_tls_version(TlsVersion::Tlsv12)
+            .build()
+        {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::error!("Failed to build TLS parameters ({e}); falling back to dev mode");
+                return Self { inner: None, base_url };
+            }
+        };
+
+        // Implicit TLS on 465 (Wrapper), STARTTLS on 587 and others (Required).
         let builder = if port == 465 {
-            AsyncSmtpTransport::<Tokio1Executor>::relay(&host)
+            AsyncSmtpTransport::<Tokio1Executor>::relay(&host).map(|b| b.tls(Tls::Wrapper(tls)))
         } else {
             AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&host)
+                .map(|b| b.tls(Tls::Required(tls)))
         };
 
         let transport = match builder {
