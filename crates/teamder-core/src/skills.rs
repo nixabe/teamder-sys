@@ -388,6 +388,12 @@ pub fn compute_match_score(
     viewer_projects: &[Project],
     target_projects: &[Project],
 ) -> u8 {
+    // No skill data on either side → no meaningful comparison. Return 0, the
+    // sentinel the API and UI treat as "no score, don't display".
+    if viewer.skill_tags.is_empty() || target.skill_tags.is_empty() {
+        return 0;
+    }
+
     let skill_overlap = skill_overlap_score(viewer, target);
     let complementarity = skill_complementarity_score(viewer, target);
     let project_overlap = project_overlap_score(viewer_projects, target_projects);
@@ -517,6 +523,12 @@ fn availability_score(target: &User) -> f64 {
 /// - **Track record (20%)** — log-scaled projects_done × rating
 /// - **Availability (20%)** — open_for_collab → full credit
 pub fn compute_project_match_score(project: &Project, target: &User) -> u8 {
+    // No skill tags on the candidate → nothing to match against. Return 0 so the
+    // UI hides the score rather than showing a misleading baseline number.
+    if target.skill_tags.is_empty() {
+        return 0;
+    }
+
     let p_skills: std::collections::HashSet<String> =
         project.skills.iter().map(|s| s.to_lowercase()).collect();
     let t_skills: std::collections::HashSet<String> =
@@ -593,11 +605,17 @@ mod tests {
     }
 
     #[test]
-    fn empty_inputs_return_baseline() {
+    fn no_skill_tags_returns_zero() {
+        // A user (or viewer) with no skill tags has nothing to compare, so the
+        // score is 0 — the sentinel the API/UI treat as "no score, don't show".
         let a = User::new("a@x.com", "A", "Dev", "CS");
         let b = User::new("b@x.com", "B", "Dev", "CS");
-        let s = compute_match_score(&a, &b, &[], &[]);
-        assert!(s > 0 && s < 100);
+        assert_eq!(compute_match_score(&a, &b, &[], &[]), 0);
+
+        // One side populated, the other empty → still 0.
+        let skilled = user_with_skills("S", vec!["React", "TypeScript"]);
+        assert_eq!(compute_match_score(&skilled, &b, &[], &[]), 0);
+        assert_eq!(compute_match_score(&a, &skilled, &[], &[]), 0);
     }
 
     #[test]
