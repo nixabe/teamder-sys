@@ -75,6 +75,10 @@ pub struct User {
     #[serde(rename = "_id")]
     pub id: String,
     pub email: String,
+    /// Bcrypt password hash. `None` for accounts that haven't set a password
+    /// yet (e.g. created via email verification before the password step).
+    #[serde(default)]
+    pub password_hash: Option<String>,
     pub name: String,
     pub initials: String,
     pub role: String,
@@ -106,6 +110,12 @@ pub struct User {
     pub banner_url: Option<String>,
     #[serde(default)]
     pub resume_url: Option<String>,
+    /// Single-use password reset token (hex). Cleared after a successful reset.
+    #[serde(default)]
+    pub reset_token: Option<String>,
+    /// Expiry for the reset token.
+    #[serde(default)]
+    pub reset_token_expires_at: Option<DateTime<Utc>>,
     /// Has the user completed the onboarding wizard?
     #[serde(default)]
     pub onboarded: bool,
@@ -169,6 +179,7 @@ impl User {
         Self {
             id: Uuid::new_v4().to_string(),
             email: email.into(),
+            password_hash: None,
             name,
             initials,
             role: role.into(),
@@ -195,6 +206,8 @@ impl User {
             avatar_url: None,
             banner_url: None,
             resume_url: None,
+            reset_token: None,
+            reset_token_expires_at: None,
             onboarded: false,
             headline: None,
             notify_email: true,

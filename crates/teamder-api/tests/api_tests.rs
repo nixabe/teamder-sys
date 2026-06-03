@@ -300,7 +300,133 @@ async fn test_request_code_missing_purpose_returns_unprocessable() {
     teardown(&db).await;
 }
 
-// ── Auth: Login (passwordless) ──────────────────────────────────────────────────
+// ── Auth: Password ──────────────────────────────────────────────────────────────
+
+/// Set an initial password for a freshly-registered (passwordless) account.
+async fn set_password(client: &Client, token: &str, password: &str) {
+    let resp = client
+        .post("/api/v1/users/me/set-password")
+        .header(ContentType::JSON)
+        .header(bearer(token))
+        .body(json!({ "new_password": password }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(resp.status(), Status::Ok, "set-password failed");
+}
+
+#[tokio::test]
+async fn test_password_login_success() {
+    let (client, db) = setup().await;
+    let (token, _) = register(&client, "pw@test.com", "x", "PW User").await;
+    set_password(&client, &token, "hunter2pw").await;
+
+    let resp = client
+        .post("/api/v1/auth/login")
+        .header(ContentType::JSON)
+        .body(json!({ "email": "pw@test.com", "password": "hunter2pw" }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(resp.status(), Status::Ok);
+    let body: Value = resp.into_json().await.unwrap();
+    assert!(body["token"].is_string());
+
+    teardown(&db).await;
+}
+
+#[tokio::test]
+async fn test_password_login_wrong_password_unauthorized() {
+    let (client, db) = setup().await;
+    let (token, _) = register(&client, "pw@test.com", "x", "PW User").await;
+    set_password(&client, &token, "correcthorse").await;
+
+    let resp = client
+        .post("/api/v1/auth/login")
+        .header(ContentType::JSON)
+        .body(json!({ "email": "pw@test.com", "password": "wrongpass" }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(resp.status(), Status::Unauthorized);
+
+    teardown(&db).await;
+}
+
+#[tokio::test]
+async fn test_set_password_then_change_password() {
+    let (client, db) = setup().await;
+    let (token, _) = register(&client, "pw@test.com", "x", "PW User").await;
+    set_password(&client, &token, "firstpass").await;
+
+    // Setting again is rejected (must use change-password).
+    let again = client
+        .post("/api/v1/users/me/set-password")
+        .header(ContentType::JSON)
+        .header(bearer(&token))
+        .body(json!({ "new_password": "secondpass" }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(again.status(), Status::Conflict);
+
+    // Change with correct old password succeeds.
+    let ok = client
+        .post("/api/v1/users/me/change-password")
+        .header(ContentType::JSON)
+        .header(bearer(&token))
+        .body(json!({ "old_password": "firstpass", "new_password": "thirdpass" }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(ok.status(), Status::Ok);
+
+    // Wrong old password is rejected.
+    let bad = client
+        .post("/api/v1/users/me/change-password")
+        .header(ContentType::JSON)
+        .header(bearer(&token))
+        .body(json!({ "old_password": "nope", "new_password": "fourthpass" }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(bad.status(), Status::Unauthorized);
+
+    teardown(&db).await;
+}
+
+#[tokio::test]
+async fn test_forgot_and_reset_password() {
+    let (client, db) = setup().await;
+    register(&client, "pw@test.com", "x", "PW User").await;
+
+    // Request a reset token (dev mode returns it in the response).
+    let resp = client
+        .post("/api/v1/auth/forgot-password")
+        .header(ContentType::JSON)
+        .body(json!({ "email": "pw@test.com" }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(resp.status(), Status::Ok);
+    let body: Value = resp.into_json().await.unwrap();
+    let token = body["reset_token"].as_str().expect("reset_token missing").to_string();
+
+    // Reset the password with the token.
+    let reset = client
+        .post("/api/v1/auth/reset-password")
+        .header(ContentType::JSON)
+        .body(json!({ "token": token, "new_password": "brandnewpass" }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(reset.status(), Status::Ok);
+
+    // The new password now logs in.
+    let login = client
+        .post("/api/v1/auth/login")
+        .header(ContentType::JSON)
+        .body(json!({ "email": "pw@test.com", "password": "brandnewpass" }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(login.status(), Status::Ok);
+
+    teardown(&db).await;
+}
+
+// ── Auth: Login (email code) ─────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_login_success() {

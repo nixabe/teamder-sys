@@ -59,6 +59,9 @@ rocket_ws = "0.1"
 # SMTP email (passwordless verification codes)
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls-tls", "hostname"] }
 
+# bcrypt for password hashing
+bcrypt = "0.15"
+
 # JWT
 jsonwebtoken = "9"
 

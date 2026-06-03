@@ -218,6 +218,126 @@ async fn verify_code(req: Json<VerifyCodeRequest>, state: &State<AppState>) -> A
     }))
 }
 
+#[derive(Debug, Deserialize)]
+struct LoginRequest {
+    email: String,
+    password: String,
+}
+
+/// POST /api/v1/auth/login — password sign-in (email-code login is via
+/// request-code + verify-code).
+#[post("/login", data = "<req>")]
+async fn login(req: Json<LoginRequest>, state: &State<AppState>) -> ApiResult<AuthResponse> {
+    let email = req.email.trim().to_lowercase();
+    let user = state
+        .users
+        .find_by_email(&email)
+        .await?
+        .ok_or(TeamderError::Unauthorized)?;
+
+    let hash = user.password_hash.as_deref().ok_or_else(|| {
+        // No password set (e.g. created via email verification) — guide them to
+        // the email-code sign-in instead of leaking that the account exists.
+        TeamderError::Validation(
+            "This account has no password yet — sign in with an email code instead".into(),
+        )
+    })?;
+    let valid = bcrypt::verify(&req.password, hash)
+        .map_err(|e| TeamderError::Internal(e.to_string()))?;
+    if !valid {
+        return Err(TeamderError::Unauthorized.into());
+    }
+    if user.is_banned {
+        return Err(TeamderError::Suspended("Your account has been suspended.".into()).into());
+    }
+
+    let token = auth::create_token(
+        &user.id,
+        &user.email,
+        user.is_admin,
+        user.is_publisher,
+        &state.jwt_secret,
+    )?;
+    Ok(Json(AuthResponse { token, user: user.into() }))
+}
+
+#[derive(Debug, Deserialize)]
+struct ForgotPasswordRequest {
+    email: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ForgotPasswordResponse {
+    success: bool,
+    /// The reset token. Emailed when SMTP is configured; also returned directly
+    /// so the flow works in dev without an email server.
+    reset_token: Option<String>,
+}
+
+/// POST /api/v1/auth/forgot-password
+#[post("/forgot-password", data = "<req>")]
+async fn forgot_password(
+    req: Json<ForgotPasswordRequest>,
+    state: &State<AppState>,
+) -> ApiResult<ForgotPasswordResponse> {
+    let email = req.email.trim().to_lowercase();
+    let token_opt = if let Some(u) = state.users.find_by_email(&email).await? {
+        let token = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        );
+        let expires = chrono::Utc::now() + chrono::Duration::minutes(30);
+        state
+            .users
+            .set_reset_token(&u.id, Some(&token), Some(expires))
+            .await?;
+        // Best-effort email; ignore failures so we don't leak account existence.
+        let _ = state.mailer.send_reset(&email, &token).await;
+        Some(token)
+    } else {
+        None
+    };
+    Ok(Json(ForgotPasswordResponse {
+        success: true,
+        // Don't return the token when real email delivery is configured.
+        reset_token: if state.mailer.is_live() { None } else { token_opt },
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct ResetPasswordRequest {
+    token: String,
+    new_password: String,
+}
+
+/// POST /api/v1/auth/reset-password
+#[post("/reset-password", data = "<req>")]
+async fn reset_password(
+    req: Json<ResetPasswordRequest>,
+    state: &State<AppState>,
+) -> ApiResult<serde_json::Value> {
+    if req.new_password.len() < 6 {
+        return Err(TeamderError::Validation("Password must be at least 6 characters".into()).into());
+    }
+    let user = state
+        .users
+        .find_by_reset_token(&req.token)
+        .await?
+        .ok_or(TeamderError::Unauthorized)?;
+    let valid = user
+        .reset_token_expires_at
+        .map(|exp| exp > chrono::Utc::now())
+        .unwrap_or(false);
+    if !valid {
+        return Err(TeamderError::Unauthorized.into());
+    }
+    let hash = bcrypt::hash(&req.new_password, bcrypt::DEFAULT_COST)
+        .map_err(|e| TeamderError::Internal(e.to_string()))?;
+    state.users.set_password_hash(&user.id, &hash).await?;
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
 pub fn routes() -> Vec<Route> {
-    routes![request_code, verify_code]
+    routes![request_code, verify_code, login, forgot_password, reset_password]
 }

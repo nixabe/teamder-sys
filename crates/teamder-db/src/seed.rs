@@ -145,11 +145,12 @@ struct UserSpec {
 }
 
 async fn seed_users(db: &DbClient) -> Result<()> {
+    let hash = |pw: &str| bcrypt::hash(pw, bcrypt::DEFAULT_COST).unwrap();
     let now = Utc::now();
 
     let specs: Vec<UserSpec> = vec![
         UserSpec {
-            email: "admin@teamder.app", name: "Andy Chen", role: "Full-Stack Developer",
+            email: "413401120@cloud.fju.edu.tw", name: "Andy Chen", role: "Full-Stack Developer",
             dept: "Computer Science", year: "Year 3", location: "New Taipei City, Taiwan",
             headline: "Builder of developer tooling & team-matching platforms",
             bio: &["Building things that matter, one commit at a time.", "Passionate about open-source and developer tooling."],
@@ -366,7 +367,9 @@ async fn seed_users(db: &DbClient) -> Result<()> {
         .enumerate()
         .map(|(i, s)| {
             let mut u = User::new(s.email, s.name, s.role, s.dept);
+            u.password_hash = Some(hash("password123"));
             if s.is_admin {
+                u.password_hash = Some(hash("admin1234"));
                 u.is_admin = true;
                 u.is_publisher = true;
             }

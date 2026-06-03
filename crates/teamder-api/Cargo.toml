@@ -31,6 +31,7 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 lettre = { workspace = true }
+bcrypt = { workspace = true }
 jsonwebtoken = { workspace = true }
 dotenvy = { workspace = true }
 rocket_cors = { workspace = true }

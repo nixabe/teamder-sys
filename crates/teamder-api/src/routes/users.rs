@@ -275,6 +275,75 @@ async fn me(auth: AuthUser, state: &State<AppState>) -> ApiResult<UserResponse> 
     Ok(Json(user.into()))
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct SetPasswordRequest {
+    new_password: String,
+}
+
+/// POST /api/v1/users/me/set-password — establish an initial password for an
+/// account that doesn't have one yet (e.g. created via email verification).
+/// Use change-password to rotate an existing password.
+#[post("/me/set-password", data = "<req>")]
+async fn set_password(
+    req: Json<SetPasswordRequest>,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    if req.new_password.len() < 6 {
+        return Err(TeamderError::Validation("Password must be at least 6 characters".into()).into());
+    }
+    let user = state
+        .users
+        .find_by_id(&auth.0.sub)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+    if user.password_hash.is_some() {
+        return Err(TeamderError::Conflict(
+            "A password is already set — use change-password instead".into(),
+        )
+        .into());
+    }
+    let hash = bcrypt::hash(&req.new_password, bcrypt::DEFAULT_COST)
+        .map_err(|e| TeamderError::Internal(e.to_string()))?;
+    state.users.set_password_hash(&user.id, &hash).await?;
+    Ok(Json(json!({ "success": true })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ChangePasswordRequest {
+    old_password: String,
+    new_password: String,
+}
+
+/// POST /api/v1/users/me/change-password — rotate an existing password.
+#[post("/me/change-password", data = "<req>")]
+async fn change_password(
+    req: Json<ChangePasswordRequest>,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<Value> {
+    let user = state
+        .users
+        .find_by_id(&auth.0.sub)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("User not found".into()))?;
+    let hash = user.password_hash.as_deref().ok_or_else(|| {
+        TeamderError::Validation("No password is set yet — use set-password instead".into())
+    })?;
+    let valid = bcrypt::verify(&req.old_password, hash)
+        .map_err(|e| TeamderError::Internal(e.to_string()))?;
+    if !valid {
+        return Err(TeamderError::Unauthorized.into());
+    }
+    if req.new_password.len() < 6 {
+        return Err(TeamderError::Validation("New password must be at least 6 characters".into()).into());
+    }
+    let new_hash = bcrypt::hash(&req.new_password, bcrypt::DEFAULT_COST)
+        .map_err(|e| TeamderError::Internal(e.to_string()))?;
+    state.users.set_password_hash(&user.id, &new_hash).await?;
+    Ok(Json(json!({ "success": true })))
+}
+
 /// POST /api/v1/users/me/onboard
 #[post("/me/onboard")]
 async fn complete_onboarding(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> {
@@ -294,5 +363,5 @@ async fn complete_onboarding(auth: AuthUser, state: &State<AppState>) -> ApiResu
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![list_users, get_user, update_user, delete_user, delete_account, me, complete_onboarding]
+    routes![list_users, get_user, update_user, delete_user, delete_account, me, set_password, change_password, complete_onboarding]
 }

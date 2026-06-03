@@ -161,6 +161,50 @@ impl Mailer {
             .map_err(|e| TeamderError::Internal(format!("Failed to send email: {e}")))?;
         Ok(())
     }
+
+    /// Send a password-reset link. In dev mode this logs and returns Ok.
+    pub async fn send_reset(&self, to: &str, token: &str) -> Result<(), TeamderError> {
+        let link = format!(
+            "{}/reset-password?token={}",
+            self.base_url.trim_end_matches('/'),
+            token
+        );
+
+        let Some(cfg) = &self.inner else {
+            tracing::info!("[dev mailer] password reset for {to}: token={token} — link: {link}");
+            return Ok(());
+        };
+
+        let text = format!(
+            "Reset your Teamder password using this link (valid 30 minutes):\n\n{link}\n\n\
+             If you didn't request this, you can ignore this email."
+        );
+        let html = format!(
+            "<div style=\"font-family:sans-serif;color:#1F2A2F\">\
+               <h2 style=\"color:#DD6E42\">Teamder</h2>\
+               <p>Reset your password (link valid 30 minutes):</p>\
+               <p><a href=\"{link}\" style=\"color:#DD6E42\">Reset my password</a></p>\
+               <p style=\"color:#8A99A0;font-size:12px\">If you didn't request this, ignore this email.</p>\
+             </div>"
+        );
+
+        let email = Message::builder()
+            .from(cfg.from.parse().map_err(|e| {
+                TeamderError::Internal(format!("bad SMTP_FROM address: {e}"))
+            })?)
+            .to(to
+                .parse()
+                .map_err(|_| TeamderError::Validation("Invalid email address".into()))?)
+            .subject("Reset your Teamder password")
+            .multipart(lettre::message::MultiPart::alternative_plain_html(text, html))
+            .map_err(|e| TeamderError::Internal(e.to_string()))?;
+
+        cfg.transport
+            .send(email)
+            .await
+            .map_err(|e| TeamderError::Internal(format!("Failed to send email: {e}")))?;
+        Ok(())
+    }
 }
 
 /// Minimal percent-encoding for the email query param (enough for addresses).
