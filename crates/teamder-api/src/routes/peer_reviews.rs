@@ -25,6 +25,8 @@ use crate::{
 struct ReviewAssistRequest {
     reviewee_id: String,
     project_name: String,
+    #[serde(default)]
+    language: Option<String>,
     scores: teamder_core::models::peer_review::ReviewScores,
     initial_body: String,
     #[serde(default)]
@@ -233,6 +235,7 @@ async fn assist_questions(
             reviewer_name: &reviewer_name,
             reviewee_name: &reviewee_name,
             project_name: req.project_name.trim(),
+            language: review_assist_language(req.language.as_deref()),
             scores: req.scores,
             initial_body,
             answers: &req.answers,
@@ -269,6 +272,7 @@ async fn assist_summary(
             reviewer_name: &reviewer_name,
             reviewee_name: &reviewee_name,
             project_name: req.project_name.trim(),
+            language: review_assist_language(req.language.as_deref()),
             scores: req.scores,
             initial_body,
             answers: &req.answers,
@@ -300,6 +304,16 @@ async fn review_assist_names(
         .ok_or_else(|| TeamderError::NotFound("Reviewee not found".into()))?;
 
     Ok((reviewer.name, reviewee.name))
+}
+
+fn review_assist_language(language: Option<&str>) -> &str {
+    match language.map(str::trim).filter(|s| !s.is_empty()) {
+        Some("zh-TW") | Some("Traditional Chinese") | Some("繁體中文") => "Traditional Chinese",
+        Some("zh-CN") | Some("Simplified Chinese") | Some("简体中文") => "Simplified Chinese",
+        Some("en") | Some("English") => "English",
+        Some(other) => other,
+        None => "the same language as the commenter's input",
+    }
 }
 
 fn review_min_collab_days() -> i64 {

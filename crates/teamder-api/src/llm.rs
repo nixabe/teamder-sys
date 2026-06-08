@@ -23,6 +23,7 @@ pub struct ReviewAssistContext<'a> {
     pub reviewer_name: &'a str,
     pub reviewee_name: &'a str,
     pub project_name: &'a str,
+    pub language: &'a str,
     pub scores: ReviewScores,
     pub initial_body: &'a str,
     pub answers: &'a [ReviewQa],
@@ -91,8 +92,9 @@ impl ReviewLlmClient {
         ctx: ReviewAssistContext<'_>,
     ) -> Result<Vec<String>, TeamderError> {
         let prompt = format!(
-            "{}\n\nTask: Ask 2 or 3 concise follow-up questions that would make this peer review clearer, fairer, and more specific. Do not ask about information already answered. If the commenter says part of the preview was misleading, focus on that ambiguity.\n\nReturn only JSON shaped exactly like {{\"questions\":[\"...\"]}}.",
-            render_context(&ctx)
+            "{}\n\nTask: Ask 2 or 3 concise follow-up questions in {} that would make this peer review clearer, fairer, and more specific. Do not ask about information already answered. If the commenter says part of the preview was misleading, focus on that ambiguity.\n\nReturn only JSON shaped exactly like {{\"questions\":[\"...\"]}}.",
+            render_context(&ctx),
+            ctx.language
         );
         let content = self.complete(prompt, 450).await?;
         parse_questions(&content)
@@ -103,8 +105,10 @@ impl ReviewLlmClient {
         ctx: ReviewAssistContext<'_>,
     ) -> Result<String, TeamderError> {
         let prompt = format!(
-            "{}\n\nTask: Write the final peer review body as a preview for the commenter. Use only the supplied facts. Keep it constructive, specific, and balanced. Preserve the commenter's language when possible. Avoid inventing achievements, private details, or exaggerated praise. Target 70 to 130 words.\n\nReturn only JSON shaped exactly like {{\"summary\":\"...\"}}.",
-            render_context(&ctx)
+            "{}\n\nTask: Write the final peer review body as a preview for the commenter in {}. Use only the supplied facts. Keep it constructive, specific, and balanced. Match the language and tone of the commenter's input. Avoid inventing achievements, private details, or exaggerated praise. Target 70 to 130 words unless {} would naturally be shorter.\n\nReturn only JSON shaped exactly like {{\"summary\":\"...\"}}.",
+            render_context(&ctx),
+            ctx.language,
+            ctx.language
         );
         let content = self.complete(prompt, 700).await?;
         parse_summary(&content)
@@ -117,7 +121,7 @@ impl ReviewLlmClient {
             messages: vec![
                 ChatMessage {
                     role: "system",
-                    content: "You help Teamder commenters write peer reviews. You ask useful clarification questions and summarize only user-provided facts. Output valid JSON only, with no markdown.".to_string(),
+                    content: "You help Teamder commenters write peer reviews. You ask useful clarification questions and summarize only user-provided facts. Always write user-facing questions and summaries in the requested language. Output valid JSON only, with no markdown.".to_string(),
                 },
                 ChatMessage { role: "user", content: user_prompt },
             ],
@@ -157,7 +161,8 @@ impl ReviewLlmClient {
 
 fn render_context(ctx: &ReviewAssistContext<'_>) -> String {
     let mut out = format!(
-        "Peer review context:\nReviewer: {}\nReviewee: {}\nContext: {}\nScores: skill {}/5, communication {}/5, reliability {}/5, teamwork {}/5\nInitial comment:\n{}",
+        "Peer review context:\nRequested output language: {}\nReviewer: {}\nReviewee: {}\nContext: {}\nScores: skill {}/5, communication {}/5, reliability {}/5, teamwork {}/5\nInitial comment:\n{}",
+        ctx.language,
         ctx.reviewer_name,
         ctx.reviewee_name,
         ctx.project_name,
