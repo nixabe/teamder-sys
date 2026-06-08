@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Duration, Utc};
 use rocket::{serde::json::Json, Route, State};
 use serde::{Deserialize, Serialize};
@@ -24,6 +26,10 @@ use crate::{
 #[derive(Debug, Deserialize)]
 struct ReviewAssistRequest {
     reviewee_id: String,
+    #[serde(default)]
+    context_type: Option<String>,
+    #[serde(default)]
+    context_id: Option<String>,
     project_name: String,
     #[serde(default)]
     language: Option<String>,
@@ -228,6 +234,14 @@ async fn assist_questions(
         )
         .into());
     }
+    let context_details = review_context_details(
+        req.context_type.as_deref(),
+        req.context_id.as_deref(),
+        &auth.0.sub,
+        &req.reviewee_id,
+        state,
+    )
+    .await?;
 
     let questions = state
         .review_llm
@@ -235,6 +249,7 @@ async fn assist_questions(
             reviewer_name: &reviewer_name,
             reviewee_name: &reviewee_name,
             project_name: req.project_name.trim(),
+            context_details: context_details.as_deref(),
             language: review_assist_language(req.language.as_deref()),
             scores: req.scores,
             initial_body,
@@ -265,6 +280,14 @@ async fn assist_summary(
         )
         .into());
     }
+    let context_details = review_context_details(
+        req.context_type.as_deref(),
+        req.context_id.as_deref(),
+        &auth.0.sub,
+        &req.reviewee_id,
+        state,
+    )
+    .await?;
 
     let summary = state
         .review_llm
@@ -272,6 +295,7 @@ async fn assist_summary(
             reviewer_name: &reviewer_name,
             reviewee_name: &reviewee_name,
             project_name: req.project_name.trim(),
+            context_details: context_details.as_deref(),
             language: review_assist_language(req.language.as_deref()),
             scores: req.scores,
             initial_body,
@@ -314,6 +338,147 @@ fn review_assist_language(language: Option<&str>) -> &str {
         Some(other) => other,
         None => "the same language as the commenter's input",
     }
+}
+
+async fn review_context_details(
+    context_type: Option<&str>,
+    context_id: Option<&str>,
+    reviewer_id: &str,
+    reviewee_id: &str,
+    state: &State<AppState>,
+) -> Result<Option<String>, TeamderError> {
+    let Some(context_id) = context_id.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+
+    match context_type.map(str::trim) {
+        Some("project") => {
+            let project = state
+                .projects
+                .find_by_id(context_id)
+                .await?
+                .ok_or_else(|| TeamderError::NotFound("Project not found".into()))?;
+            let on_project = |uid: &str| {
+                project.lead_user_id == uid || project.team.iter().any(|m| m.user_id == uid)
+            };
+            if !on_project(reviewer_id) || !on_project(reviewee_id) {
+                return Err(TeamderError::Forbidden);
+            }
+            project_context_details(&project, state).await.map(Some)
+        }
+        Some("study_group") => {
+            let group = state
+                .study_groups
+                .find_by_id(context_id)
+                .await?
+                .ok_or_else(|| TeamderError::NotFound("Study group not found".into()))?;
+            let in_group = |uid: &str| {
+                group.created_by == uid || group.members.iter().any(|m| m.user_id == uid)
+            };
+            if !in_group(reviewer_id) || !in_group(reviewee_id) {
+                return Err(TeamderError::Forbidden);
+            }
+            study_group_context_details(&group, state).await.map(Some)
+        }
+        _ => Ok(None),
+    }
+}
+
+async fn project_context_details(
+    project: &Project,
+    state: &State<AppState>,
+) -> Result<String, TeamderError> {
+    let mut ids: Vec<&str> = vec![project.lead_user_id.as_str()];
+    ids.extend(project.team.iter().map(|m| m.user_id.as_str()));
+    let users = state.users.find_many_by_ids(&ids).await?;
+    let names: HashMap<&str, &str> = users
+        .iter()
+        .map(|u| (u.id.as_str(), u.name.as_str()))
+        .collect();
+
+    let roles = project
+        .roles
+        .iter()
+        .map(|r| {
+            format!(
+                "{} (needed {}, filled {})",
+                r.name, r.count_needed, r.filled
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    let team = project
+        .team
+        .iter()
+        .map(|m| {
+            let name = names
+                .get(m.user_id.as_str())
+                .copied()
+                .unwrap_or(m.initials.as_str());
+            match &m.role {
+                Some(role) if !role.trim().is_empty() => format!("{name} - {role}"),
+                _ => name.to_string(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    let lead_name = names
+        .get(project.lead_user_id.as_str())
+        .copied()
+        .unwrap_or("Unknown lead");
+
+    Ok(format!(
+        "Type: project\nTitle: {}\nDescription: {}\nGoals: {}\nSkills: {}\nOpen roles: {}\nLead: {}\nTeam members: {}",
+        project.name,
+        project.description,
+        project.goals.as_deref().unwrap_or("Not specified"),
+        if project.skills.is_empty() { "Not specified".to_string() } else { project.skills.join(", ") },
+        if roles.is_empty() { "Not specified".to_string() } else { roles },
+        lead_name,
+        if team.is_empty() { "No listed members".to_string() } else { team },
+    ))
+}
+
+async fn study_group_context_details(
+    group: &StudyGroup,
+    state: &State<AppState>,
+) -> Result<String, TeamderError> {
+    let mut ids: Vec<&str> = vec![group.created_by.as_str()];
+    ids.extend(group.members.iter().map(|m| m.user_id.as_str()));
+    let users = state.users.find_many_by_ids(&ids).await?;
+    let names: HashMap<&str, &str> = users
+        .iter()
+        .map(|u| (u.id.as_str(), u.name.as_str()))
+        .collect();
+
+    let creator_name = names
+        .get(group.created_by.as_str())
+        .copied()
+        .unwrap_or("Unknown creator");
+    let members = group
+        .members
+        .iter()
+        .map(|m| {
+            let name = names
+                .get(m.user_id.as_str())
+                .copied()
+                .unwrap_or(m.initials.as_str());
+            format!("{name} (streak {})", m.streak)
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    Ok(format!(
+        "Type: study group\nTitle: {}\nGoal: {}\nDescription: {}\nSubject: {}\nTags: {}\nSchedule: {}\nCreator: {}\nMembers: {}",
+        group.name,
+        group.goal,
+        group.description.as_deref().unwrap_or("Not specified"),
+        group.subject,
+        if group.tags.is_empty() { "Not specified".to_string() } else { group.tags.join(", ") },
+        group.schedule,
+        creator_name,
+        if members.is_empty() { "No listed members".to_string() } else { members },
+    ))
 }
 
 fn review_min_collab_days() -> i64 {
