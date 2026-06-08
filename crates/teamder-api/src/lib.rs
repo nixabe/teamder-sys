@@ -5,19 +5,23 @@ pub mod auth;
 pub mod chat;
 pub mod error;
 pub mod guards;
+pub mod llm;
 pub mod mailer;
 pub mod routes;
 pub mod state;
 
 use rocket::fs::FileServer;
 use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
+use state::AppState;
 use std::str::FromStr;
 use teamder_db::DbClient;
-use state::AppState;
 
 /// Builds the Rocket application with the given DB client and JWT secret.
 /// Exposed for integration testing — production use goes through `main.rs`.
-pub async fn build_rocket(db_client: DbClient, jwt_secret: String) -> rocket::Rocket<rocket::Build> {
+pub async fn build_rocket(
+    db_client: DbClient,
+    jwt_secret: String,
+) -> rocket::Rocket<rocket::Build> {
     let app_state = AppState::new_with_secret(db_client, jwt_secret);
 
     // Ensure the uploads directory exists so the static FileServer can serve from it.
@@ -69,11 +73,17 @@ pub async fn build_rocket(db_client: DbClient, jwt_secret: String) -> rocket::Ro
         .mount("/api/v1/reviews", routes::peer_reviews::routes())
         .mount("/api/v1/skills", routes::skills::routes())
         .mount("/api/v1/notifications", routes::notifications::routes())
-        .mount("/api/v1/competition-teams", routes::competition_teams::routes())
+        .mount(
+            "/api/v1/competition-teams",
+            routes::competition_teams::routes(),
+        )
         .mount("/api/v1/bookmarks", routes::bookmarks::routes())
         .mount("/api/v1/reports", routes::reports::routes())
         .mount("/api/v1/search", routes::search::routes())
-        .mount("/api/v1/contact-exchange", routes::contact_exchange::routes())
+        .mount(
+            "/api/v1/contact-exchange",
+            routes::contact_exchange::routes(),
+        )
 }
 
 #[get("/")]
