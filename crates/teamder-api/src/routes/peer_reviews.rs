@@ -1,5 +1,6 @@
-use rocket::{Route, State, serde::json::Json};
-use serde_json::{Value, json};
+use rocket::{serde::json::Json, Route, State};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use teamder_core::{
     error::TeamderError,
     models::{
@@ -12,7 +13,34 @@ use teamder_core::{
     skills::filter_valid_skills,
 };
 
-use crate::{error::ApiResult, guards::AuthUser, state::AppState};
+use crate::{
+    error::ApiResult,
+    guards::AuthUser,
+    llm::{ReviewAssistContext, ReviewQa},
+    state::AppState,
+};
+
+#[derive(Debug, Deserialize)]
+struct ReviewAssistRequest {
+    reviewee_id: String,
+    project_name: String,
+    scores: teamder_core::models::peer_review::ReviewScores,
+    initial_body: String,
+    #[serde(default)]
+    answers: Vec<ReviewQa>,
+    #[serde(default)]
+    clarification_note: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewAssistQuestionsResponse {
+    questions: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewAssistSummaryResponse {
+    summary: String,
+}
 
 /// POST /api/v1/reviews
 ///
@@ -44,7 +72,10 @@ async fn create_review(
         .ok_or_else(|| TeamderError::NotFound("Reviewee not found".into()))?;
 
     if req.project_id.is_none() && req.study_group_id.is_none() {
-        return Err(TeamderError::Validation("Either project_id or study_group_id is required".into()).into());
+        return Err(TeamderError::Validation(
+            "Either project_id or study_group_id is required".into(),
+        )
+        .into());
     }
 
     // If a project is referenced, ensure both parties were on it and it's completed.
@@ -55,7 +86,10 @@ async fn create_review(
             .await?
             .ok_or_else(|| TeamderError::NotFound("Project not found".into()))?;
         if project.status != ProjectStatus::Completed {
-            return Err(TeamderError::Validation("Reviews can only be submitted after the project is completed".into()).into());
+            return Err(TeamderError::Validation(
+                "Reviews can only be submitted after the project is completed".into(),
+            )
+            .into());
         }
         let on_project = |uid: &str| {
             project.lead_user_id == uid || project.team.iter().any(|m| m.user_id == uid)
@@ -73,11 +107,13 @@ async fn create_review(
             .await?
             .ok_or_else(|| TeamderError::NotFound("Study group not found".into()))?;
         if group.status != StudyGroupStatus::Completed {
-            return Err(TeamderError::Validation("Reviews can only be submitted after the study group is completed".into()).into());
+            return Err(TeamderError::Validation(
+                "Reviews can only be submitted after the study group is completed".into(),
+            )
+            .into());
         }
-        let in_group = |uid: &str| {
-            group.created_by == uid || group.members.iter().any(|m| m.user_id == uid)
-        };
+        let in_group =
+            |uid: &str| group.created_by == uid || group.members.iter().any(|m| m.user_id == uid);
         if !in_group(&reviewer_id) || !in_group(&req.reviewee_id) {
             return Err(TeamderError::Forbidden.into());
         }
@@ -86,10 +122,18 @@ async fn create_review(
     // Prevent duplicate reviews for the same pair + project.
     let exists = state
         .peer_reviews
-        .exists_pair(&reviewer_id, &req.reviewee_id, req.project_id.as_deref(), req.study_group_id.as_deref())
+        .exists_pair(
+            &reviewer_id,
+            &req.reviewee_id,
+            req.project_id.as_deref(),
+            req.study_group_id.as_deref(),
+        )
         .await?;
     if exists {
-        return Err(TeamderError::Conflict("You already reviewed this collaborator for this project".into()).into());
+        return Err(TeamderError::Conflict(
+            "You already reviewed this collaborator for this project".into(),
+        )
+        .into());
     }
 
     let mut scores = req.0.scores;
@@ -97,7 +141,9 @@ async fn create_review(
 
     let body = req.0.body.trim().to_string();
     if body.len() < 5 {
-        return Err(TeamderError::Validation("Review body must be at least 5 characters".into()).into());
+        return Err(
+            TeamderError::Validation("Review body must be at least 5 characters".into()).into(),
+        );
     }
 
     let endorsed = filter_valid_skills(&req.0.endorsed_skills);
@@ -136,7 +182,10 @@ async fn create_review(
         reviewee.id.clone(),
         NotificationKind::Review,
         "New peer review",
-        format!("{} left you a review on {}", reviewer.name, review.project_name),
+        format!(
+            "{} left you a review on {}",
+            reviewer.name, review.project_name
+        ),
         Some(format!("/profile/{}", reviewee.id)),
     );
     if let Err(e) = state.notifications.create(&n).await {
@@ -146,12 +195,104 @@ async fn create_review(
     Ok(Json(review.into()))
 }
 
+/// POST /api/v1/reviews/assist/questions
+///
+/// Ask the configured LLM for 2-3 clarification questions based on the
+/// commenter's draft and any previous answers.
+#[post("/assist/questions", data = "<req>")]
+async fn assist_questions(
+    req: Json<ReviewAssistRequest>,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<ReviewAssistQuestionsResponse> {
+    let (reviewer_name, reviewee_name) =
+        review_assist_names(&auth.0.sub, &req.reviewee_id, state).await?;
+    let initial_body = req.initial_body.trim();
+    if initial_body.len() < 5 {
+        return Err(TeamderError::Validation(
+            "Initial comment must be at least 5 characters".into(),
+        )
+        .into());
+    }
+
+    let questions = state
+        .review_llm
+        .clarification_questions(ReviewAssistContext {
+            reviewer_name: &reviewer_name,
+            reviewee_name: &reviewee_name,
+            project_name: req.project_name.trim(),
+            scores: req.scores,
+            initial_body,
+            answers: &req.answers,
+            clarification_note: req.clarification_note.as_deref(),
+        })
+        .await?;
+
+    Ok(Json(ReviewAssistQuestionsResponse { questions }))
+}
+
+/// POST /api/v1/reviews/assist/summary
+///
+/// Summarize the initial comment and clarification answers into the review body
+/// that the commenter previews before submitting.
+#[post("/assist/summary", data = "<req>")]
+async fn assist_summary(
+    req: Json<ReviewAssistRequest>,
+    auth: AuthUser,
+    state: &State<AppState>,
+) -> ApiResult<ReviewAssistSummaryResponse> {
+    let (reviewer_name, reviewee_name) =
+        review_assist_names(&auth.0.sub, &req.reviewee_id, state).await?;
+    let initial_body = req.initial_body.trim();
+    if initial_body.len() < 5 {
+        return Err(TeamderError::Validation(
+            "Initial comment must be at least 5 characters".into(),
+        )
+        .into());
+    }
+
+    let summary = state
+        .review_llm
+        .summarize_review(ReviewAssistContext {
+            reviewer_name: &reviewer_name,
+            reviewee_name: &reviewee_name,
+            project_name: req.project_name.trim(),
+            scores: req.scores,
+            initial_body,
+            answers: &req.answers,
+            clarification_note: req.clarification_note.as_deref(),
+        })
+        .await?;
+
+    Ok(Json(ReviewAssistSummaryResponse { summary }))
+}
+
+async fn review_assist_names(
+    reviewer_id: &str,
+    reviewee_id: &str,
+    state: &State<AppState>,
+) -> Result<(String, String), TeamderError> {
+    if reviewer_id == reviewee_id {
+        return Err(TeamderError::Validation("Cannot review yourself".into()));
+    }
+
+    let reviewer = state
+        .users
+        .find_by_id(reviewer_id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("Reviewer not found".into()))?;
+    let reviewee = state
+        .users
+        .find_by_id(reviewee_id)
+        .await?
+        .ok_or_else(|| TeamderError::NotFound("Reviewee not found".into()))?;
+
+    Ok((reviewer.name, reviewee.name))
+}
+
 /// GET /api/v1/reviews/user/<id> — list reviews left FOR a user.
 #[get("/user/<id>")]
-async fn list_for_user(
-    id: String,
-    state: &State<AppState>,
-) -> ApiResult<Value> {
+async fn list_for_user(id: String, state: &State<AppState>) -> ApiResult<Value> {
     let reviews = state.peer_reviews.list_for_user(&id).await?;
     let data: Vec<PeerReviewResponse> = reviews.into_iter().map(Into::into).collect();
     let avg: f32 = if data.is_empty() {
@@ -159,7 +300,9 @@ async fn list_for_user(
     } else {
         data.iter().map(|r| r.average).sum::<f32>() / data.len() as f32
     };
-    Ok(Json(json!({ "data": data, "average": avg, "count": data.len() })))
+    Ok(Json(
+        json!({ "data": data, "average": avg, "count": data.len() }),
+    ))
 }
 
 /// GET /api/v1/reviews/mine — reviews YOU have written.
@@ -171,5 +314,11 @@ async fn list_mine(auth: AuthUser, state: &State<AppState>) -> ApiResult<Value> 
 }
 
 pub fn routes() -> Vec<Route> {
-    routes![create_review, list_for_user, list_mine]
+    routes![
+        create_review,
+        assist_questions,
+        assist_summary,
+        list_for_user,
+        list_mine
+    ]
 }

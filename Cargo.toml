@@ -68,6 +68,9 @@ jsonwebtoken = "9"
 # Futures utilities
 futures-util = "0.3"
 
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
 # Dotenv
 dotenvy = "0.15"
 

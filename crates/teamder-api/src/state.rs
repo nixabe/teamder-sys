@@ -1,17 +1,17 @@
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
 use chrono::{DateTime, Utc};
+use std::{collections::HashMap, sync::Arc};
 use teamder_db::{
-    DbClient,
     repos::{
         AuthCodeRepo, BookmarkRepo, CompetitionRepo, CompetitionTeamRepo, ContactExchangeRepo,
         InviteRepo, JoinRequestRepo, MessageRepo, NotificationRepo, PeerReviewRepo, ProjectRepo,
-        ProjectUpdateRepo, ReportRepo, SkillCatalogRepo, StudyGroupRepo,
-        StudyGroupAnnouncementRepo, StudyGroupEventRepo, UserRepo,
+        ProjectUpdateRepo, ReportRepo, SkillCatalogRepo, StudyGroupAnnouncementRepo,
+        StudyGroupEventRepo, StudyGroupRepo, UserRepo,
     },
+    DbClient,
 };
+use tokio::sync::Mutex;
 
-use crate::{chat::ChatState, mailer::Mailer};
+use crate::{chat::ChatState, llm::ReviewLlmClient, mailer::Mailer};
 
 /// Shared application state injected into every Rocket handler.
 pub struct AppState {
@@ -34,6 +34,7 @@ pub struct AppState {
     pub reports: ReportRepo,
     pub project_updates: ProjectUpdateRepo,
     pub skill_catalog: SkillCatalogRepo,
+    pub review_llm: ReviewLlmClient,
     pub chat: ChatState,
     pub notif_hub: ChatState,
     pub jwt_secret: String,
@@ -69,6 +70,7 @@ impl AppState {
             reports: ReportRepo::new(&db),
             project_updates: ProjectUpdateRepo::new(&db),
             skill_catalog: SkillCatalogRepo::new(&db),
+            review_llm: ReviewLlmClient::from_env(),
             chat: ChatState::new(),
             notif_hub: ChatState::new(),
             jwt_secret,
