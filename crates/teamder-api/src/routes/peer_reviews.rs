@@ -51,6 +51,8 @@ struct ReviewAssistSummaryResponse {
     summary: String,
 }
 
+const REVIEW_ASSIST_MIN_INPUT_CHARS: usize = 25;
+
 /// POST /api/v1/reviews
 ///
 /// Submit a peer review of another user. Both reviewer and reviewee must have
@@ -228,12 +230,7 @@ async fn assist_questions(
     let (reviewer_name, reviewee_name) =
         review_assist_names(&auth.0.sub, &req.reviewee_id, state).await?;
     let initial_body = req.initial_body.trim();
-    if initial_body.len() < 5 {
-        return Err(TeamderError::Validation(
-            "Initial comment must be at least 5 characters".into(),
-        )
-        .into());
-    }
+    validate_review_assist_inputs(initial_body, &req.answers)?;
     let context_details = review_context_details(
         req.context_type.as_deref(),
         req.context_id.as_deref(),
@@ -274,12 +271,7 @@ async fn assist_summary(
     let (reviewer_name, reviewee_name) =
         review_assist_names(&auth.0.sub, &req.reviewee_id, state).await?;
     let initial_body = req.initial_body.trim();
-    if initial_body.len() < 5 {
-        return Err(TeamderError::Validation(
-            "Initial comment must be at least 5 characters".into(),
-        )
-        .into());
-    }
+    validate_review_assist_inputs(initial_body, &req.answers)?;
     let context_details = review_context_details(
         req.context_type.as_deref(),
         req.context_id.as_deref(),
@@ -338,6 +330,28 @@ fn review_assist_language(language: Option<&str>) -> &str {
         Some(other) => other,
         None => "the same language as the commenter's input",
     }
+}
+
+fn validate_review_assist_inputs(
+    initial_body: &str,
+    answers: &[ReviewQa],
+) -> Result<(), TeamderError> {
+    if initial_body.trim().chars().count() < REVIEW_ASSIST_MIN_INPUT_CHARS {
+        return Err(TeamderError::Validation(format!(
+            "Initial comment must be at least {REVIEW_ASSIST_MIN_INPUT_CHARS} characters"
+        )));
+    }
+
+    if answers.iter().any(|qa| {
+        !qa.question.trim().is_empty()
+            && qa.answer.trim().chars().count() < REVIEW_ASSIST_MIN_INPUT_CHARS
+    }) {
+        return Err(TeamderError::Validation(format!(
+            "Each clarification answer must be at least {REVIEW_ASSIST_MIN_INPUT_CHARS} characters"
+        )));
+    }
+
+    Ok(())
 }
 
 async fn review_context_details(
