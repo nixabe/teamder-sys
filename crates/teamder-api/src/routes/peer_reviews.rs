@@ -1,3 +1,4 @@
+use chrono::{DateTime, Duration, Utc};
 use rocket::{serde::json::Json, Route, State};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -6,8 +7,8 @@ use teamder_core::{
     models::{
         notification::{Notification, NotificationKind},
         peer_review::{CreatePeerReviewRequest, PeerReview, PeerReviewResponse},
-        project::ProjectStatus,
-        study_group::StudyGroupStatus,
+        project::{Project, ProjectStatus},
+        study_group::{StudyGroup, StudyGroupStatus},
         user::Review,
     },
     skills::filter_valid_skills,
@@ -77,6 +78,7 @@ async fn create_review(
         )
         .into());
     }
+    let min_collab_days = review_min_collab_days();
 
     // If a project is referenced, ensure both parties were on it and it's completed.
     if let Some(pid) = &req.project_id {
@@ -97,6 +99,11 @@ async fn create_review(
         if !on_project(&reviewer_id) || !on_project(&req.reviewee_id) {
             return Err(TeamderError::Forbidden.into());
         }
+        ensure_review_collaboration_age(
+            min_collab_days,
+            project_participant_since(&project, &reviewer_id),
+            project_participant_since(&project, &req.reviewee_id),
+        )?;
     }
 
     // If a study group is referenced, ensure both parties were in it and it's completed.
@@ -117,6 +124,11 @@ async fn create_review(
         if !in_group(&reviewer_id) || !in_group(&req.reviewee_id) {
             return Err(TeamderError::Forbidden.into());
         }
+        ensure_review_collaboration_age(
+            min_collab_days,
+            study_group_participant_since(&group, &reviewer_id),
+            study_group_participant_since(&group, &req.reviewee_id),
+        )?;
     }
 
     // Prevent duplicate reviews for the same pair + project.
@@ -288,6 +300,61 @@ async fn review_assist_names(
         .ok_or_else(|| TeamderError::NotFound("Reviewee not found".into()))?;
 
     Ok((reviewer.name, reviewee.name))
+}
+
+fn review_min_collab_days() -> i64 {
+    std::env::var("REVIEW_MIN_COLLAB_DAYS")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0)
+        .max(0)
+}
+
+fn project_participant_since(project: &Project, user_id: &str) -> Option<DateTime<Utc>> {
+    if project.lead_user_id == user_id {
+        return Some(project.created_at);
+    }
+    project
+        .team
+        .iter()
+        .find(|member| member.user_id == user_id)
+        .map(|member| member.joined_at)
+}
+
+fn study_group_participant_since(group: &StudyGroup, user_id: &str) -> Option<DateTime<Utc>> {
+    if group.created_by == user_id {
+        return Some(group.created_at);
+    }
+    group
+        .members
+        .iter()
+        .find(|member| member.user_id == user_id)
+        .map(|member| member.joined_at)
+}
+
+fn ensure_review_collaboration_age(
+    min_days: i64,
+    reviewer_since: Option<DateTime<Utc>>,
+    reviewee_since: Option<DateTime<Utc>>,
+) -> Result<(), TeamderError> {
+    if min_days <= 0 {
+        return Ok(());
+    }
+
+    let min_duration = Duration::days(min_days);
+    let now = Utc::now();
+    let reviewer_since = reviewer_since.ok_or(TeamderError::Forbidden)?;
+    let reviewee_since = reviewee_since.ok_or(TeamderError::Forbidden)?;
+
+    if now.signed_duration_since(reviewer_since) < min_duration
+        || now.signed_duration_since(reviewee_since) < min_duration
+    {
+        return Err(TeamderError::Validation(format!(
+            "Reviews require at least {min_days} days of shared collaboration"
+        )));
+    }
+
+    Ok(())
 }
 
 /// GET /api/v1/reviews/user/<id> — list reviews left FOR a user.
